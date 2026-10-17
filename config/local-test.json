@@ -4,11 +4,18 @@
     "port": 9023,
     "secret": "cymru"
   },
-  "rtpengine" : {
+  "rtpengine": {
     "remote": {
       "host": "127.0.0.1",
       "port": 33333
     },
     "localPort": 22223
+  },
+  "db": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "user": "root",
+    "password": "oreka123",
+    "database": "siprec"
   }
 }
