@@ -6,8 +6,8 @@
   <el-container v-else class="layout">
     <el-aside width="210px" class="aside">
       <div class="brand">SIPREC 录音查询</div>
-      <el-menu :default-active="$route.path" class="menu" background-color="#001529"
-               text-color="#d0d7de" active-text-color="#fff" router>
+      <el-menu :default-active="$route.path" class="menu" background-color="#d9ecff"
+               text-color="#303133" active-text-color="#0960bd" router>
         <el-menu-item index="/recordings">
           <el-icon><Headset /></el-icon><span>录音查询</span>
         </el-menu-item>
@@ -60,9 +60,11 @@ body { margin: 0; font-family: -apple-system, "Helvetica Neue", Arial, "PingFang
 .layout { min-height: 100vh; }
 
 /* 左侧边栏 */
-.aside { background: #001529; min-height: 100vh; }
-.brand { color: #fff; font-size: 17px; font-weight: 600; padding: 18px 20px; border-bottom: 1px solid #ffffff1a; }
+.aside { background: #d9ecff; min-height: 100vh; }
+.brand { color: #0960bd; font-size: 17px; font-weight: 600; padding: 18px 20px; border-bottom: 1px solid #0960bd22; }
 .menu { border-right: none; }
+.menu :deep(.el-menu-item:hover) { background-color: #c6e2ff; }
+.menu :deep(.el-menu-item.is-active) { background-color: #b3d8ff; }
 
 /* 顶栏 */
 .header { background: #fff; border-bottom: 1px solid #e4e7ed; display: flex; align-items: center; justify-content: flex-end; padding: 0 20px; }
