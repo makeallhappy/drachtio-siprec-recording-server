@@ -25,11 +25,12 @@
       </el-form>
     </el-card>
 
-    <!-- 固定播放条(查询条件框下方,不弹窗) -->
-    <el-card v-if="playVisible" class="player-card" shadow="never">
+    <!-- 常驻播放条(查询条件框下方,一直在) -->
+    <el-card class="player-card" shadow="never">
       <div class="player-bar">
-        <span class="play-title" :title="playTitle">{{ playTitle }}</span>
+        <span class="play-title" :title="playTitle">{{ playTitle || '未播放' }}</span>
         <audio v-if="playUrl" :src="playUrl" controls autoplay class="player"></audio>
+        <audio v-else controls class="player" disabled></audio>
         <el-button text type="info" class="close-btn" @click="closePlay">
           <el-icon><Close /></el-icon>
         </el-button>
