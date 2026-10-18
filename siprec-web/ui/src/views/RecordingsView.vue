@@ -113,8 +113,8 @@ async function onPlay(row) {
   playTitle.value = `${row.caller_number || ''} → ${row.callee_number || ''} (${fmtTime(row.start_time)})`
   try {
     if (playUrl.value) URL.revokeObjectURL(playUrl.value)
-    playUrl.value = await fetchAudioBlob(row, 'flac')
-    playFormat.value = 'flac'
+    playUrl.value = await fetchAudioBlob(row, 'wav')
+    playFormat.value = 'wav'
     // 等 WavePlayer 组件挂载后自动加载
     setTimeout(() => {
       const ws = document.querySelector('.waveform')
@@ -129,10 +129,10 @@ async function onPlay(row) {
 
 async function onDownload(row) {
   try {
-    const url = await fetchAudioBlob(row, 'flac')
+    const url = await fetchAudioBlob(row, 'wav')
     const a = document.createElement('a')
     a.href = url
-    a.download = `siprec_${row.caller_number || 'x'}_${row.callee_number || 'x'}_${row.id}.flac`
+    a.download = `siprec_${row.caller_number || 'x'}_${row.callee_number || 'x'}_${row.id}.wav`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)

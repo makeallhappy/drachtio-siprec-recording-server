@@ -79,8 +79,8 @@ async function onPlay() {
   playLoading.value = true
   try {
     if (playUrl.value) URL.revokeObjectURL(playUrl.value)
-    playUrl.value = await fetchAudioBlob('flac')
-    playFormat.value = 'flac'
+    playUrl.value = await fetchAudioBlob('wav')
+    playFormat.value = 'wav'
     playVisible.value = true
   } catch (e) {
     ElMessage.error('获取音频失败: ' + (e.response?.data?.error || e.message))
@@ -91,10 +91,10 @@ async function onPlay() {
 
 async function onDownload() {
   try {
-    const url = await fetchAudioBlob('flac')
+    const url = await fetchAudioBlob('wav')
     const a = document.createElement('a')
     a.href = url
-    a.download = `siprec_${row.value?.caller_number || 'x'}_${row.value?.callee_number || 'x'}_${route.params.id}.flac`
+    a.download = `siprec_${row.value?.caller_number || 'x'}_${row.value?.callee_number || 'x'}_${route.params.id}.wav`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
