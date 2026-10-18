@@ -279,3 +279,50 @@ Content-Type: application/json
 | `idx_thirdpty_append` | 按第三方标签过滤 |
 | `ft_caller` / `ft_callee` | ngram 全文（子串/中文） |
 
+
+## 9. recordingId 计算规则
+
+`recordingId` **不是数据库字段**,而是由"月份 + 表内自增 id"拼出来的对外标识:
+
+```
+recordingId = <YYYYMM>_<id>
+```
+
+| 组成 | 来源 |
+|---|---|
+| `YYYYMM` | 分月表名 `recording_metadata_YYYYMM` 的后 6 位 |
+| `id` | 该表的自增主键 `id` |
+
+示例:
+
+| 数据库位置 | recordingId |
+|---|---|
+| 表 `recording_metadata_202610`,行 `id=27` | `202610_27` |
+| 表 `recording_metadata_202611`,行 `id=5` | `202611_5` |
+
+### 反解规则(服务端)
+
+```
+取最后一个下划线:
+  前缀 = "202610"  -> 表名 = "recording_metadata_" + 前缀
+  后缀 = "27"      -> id = 27
+```
+
+### 特性
+
+- **对外唯一**:月份 + 表内自增 id,跨月不重复(前提:分月表不被删除重建)
+- **隐藏分表细节**:调用方无需知道 MySQL 按月份分表,也不用拼表名
+- **不可自造**:必须使用查询接口返回的值;格式错误返回 `400/40001`
+
+### 与其他标识的区别
+
+| 标识 | 来源 | 是否对外唯一 | 用途 |
+|---|---|---|---|
+| `recordingId` | 月份 + id 计算 | ✅ | **对外主键**,API 路径参数 |
+| `originalCallId` | SIP Call-ID | 一般唯一 | 关联 rtpengine 的 pcap 录音文件 |
+| `recordingSessionId` | SIPREC rs-metadata XML | ❌ 不保证(某些 SBC 复用固定值) | 与 PBX/SBC 侧对账 |
+| `sessionId` | 本地生成的 UUID | 表内唯一 | 内部排查日志 |
+
+> 提示:调用方应把 `recordingId` 当作**不透明字符串**保存和传递,不要解析其结构。
+> 若未来分表策略调整,结构可能变化,但接口语义不变。
+
