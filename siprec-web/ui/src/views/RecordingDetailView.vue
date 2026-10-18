@@ -6,11 +6,19 @@
           <el-button :icon="Back" text @click="$router.push('/recordings')">返回列表</el-button>
           <span class="title">录音详情</span>
           <div class="ops">
-            <el-button type="primary" :icon="VideoPlay" disabled>播放(待实现)</el-button>
-            <el-button :icon="Download" disabled>下载(待实现)</el-button>
+            <el-button type="primary" :icon="VideoPlay" :loading="playLoading" @click="onPlay">播放</el-button>
+            <el-button :icon="Download" @click="onDownload">下载</el-button>
           </div>
         </div>
       </template>
+
+      <!-- 本页播放条(点播放时生成) -->
+      <div v-if="playVisible" class="player-bar">
+        <audio v-if="playUrl" :src="playUrl" controls autoplay class="player"></audio>
+        <el-button text type="info" @click="closePlay">
+          <el-icon><Close /></el-icon>
+        </el-button>
+      </div>
 
       <el-descriptions v-if="row" :column="2" border>
         <el-descriptions-item label="开始时间">{{ fmtTime(row.start_time) }}</el-descriptions-item>
@@ -45,12 +53,58 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back, Download, VideoPlay } from '@element-plus/icons-vue'
+import { Back, Download, VideoPlay, Close } from '@element-plus/icons-vue'
 import api from '@/api'
 
 const route = useRoute()
 const table = route.params.table
 const row = ref(null)
+
+// 本页播放条
+const playVisible = ref(false)
+const playUrl = ref('')
+const playLoading = ref(false)
+
+async function fetchAudioBlob(fmt) {
+  const { data } = await api.get(`/api/recordings/${route.params.table}/${route.params.id}/audio`, {
+    params: { fmt },
+    responseType: 'blob',
+  })
+  return URL.createObjectURL(data)
+}
+
+async function onPlay() {
+  playLoading.value = true
+  try {
+    if (playUrl.value) URL.revokeObjectURL(playUrl.value)
+    playUrl.value = await fetchAudioBlob('wav')
+    playVisible.value = true
+  } catch (e) {
+    ElMessage.error('获取音频失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    playLoading.value = false
+  }
+}
+
+async function onDownload() {
+  try {
+    const url = await fetchAudioBlob('wav')
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `siprec_${row.value?.caller_number || 'x'}_${row.value?.callee_number || 'x'}_${route.params.id}.wav`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  } catch (e) {
+    ElMessage.error('下载失败: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+function closePlay() {
+  playVisible.value = false
+  if (playUrl.value) { URL.revokeObjectURL(playUrl.value); playUrl.value = '' }
+}
 
 function fmtTime(t) {
   if (!t) return ''
@@ -81,4 +135,6 @@ onMounted(async () => {
 .title { font-size: 16px; font-weight: 600; flex: 1; }
 .raw { margin-top: 20px; }
 pre { background: #f5f7fa; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+.player-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; background: #ecf5ff; border: 1px solid #b3d8ff; border-radius: 4px; }
+.player { flex: 1; height: 36px; }
 </style>
