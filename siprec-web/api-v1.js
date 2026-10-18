@@ -110,8 +110,15 @@ function createApiV1(deps) {
     const size = Math.min(200, Math.max(1, Number(req.query.size || 20)));
     const caller = (req.query.caller || '').trim();
     const callee = (req.query.callee || '').trim();
-    const startTime = req.query.startTime ? new Date(Number(req.query.startTime)) : null;
-    const endTime = req.query.endTime ? new Date(Number(req.query.endTime)) : null;
+    // 时间参数支持:毫秒时间戳(纯数字)或 ISO 8601(带时区)
+    const parseTs = (v) => {
+      if (v == null || v === '') return null;
+      const s = String(v);
+      const d = /^\d+$/.test(s) ? new Date(Number(s)) : new Date(s);
+      return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const startTime = parseTs(req.query.startTime);
+    const endTime = parseTs(req.query.endTime);
     const minDur = req.query.minDuration ? Number(req.query.minDuration) : null;
     const maxDur = req.query.maxDuration ? Number(req.query.maxDuration) : null;
     // 时长比较:durationOp=gt|lt|eq,duration 单位为秒
@@ -159,11 +166,13 @@ function createApiV1(deps) {
     const cols = 'id, recording_session_id, original_call_id, caller_number, caller_name, callee_number, callee_name, start_time, end_time, duration_ms, thirdpty_append, archived, audio_size_bytes';
     const unionSql = tables.map((t) => `SELECT ${cols}, '${t}' AS src_table FROM \`${t}\` ${where}`).join(' UNION ALL ');
 
-    const [cntRows] = await pool.query(`SELECT COUNT(*) AS total FROM (${unionSql}) u`, params);
+    // UNION 每个分表都带一份 WHERE 占位符,参数需按表数重复
+    const unionParams = tables.flatMap(() => params);
+    const [cntRows] = await pool.query(`SELECT COUNT(*) AS total FROM (${unionSql}) u`, unionParams);
     const total = cntRows[0].total;
 
     const pageSql = `${unionSql} ORDER BY ${sort} ${order} LIMIT ? OFFSET ?`;
-    const [rows] = await pool.query(pageSql, [...params, size, (page - 1) * size]);
+    const [rows] = await pool.query(pageSql, [...unionParams, size, (page - 1) * size]);
 
     const items = rows.map((r) => ({
       recordingId: `${String(r.src_table).replace('recording_metadata_', '')}_${r.id}`,

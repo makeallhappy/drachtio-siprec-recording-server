@@ -185,8 +185,9 @@ async function load() {
       caller: query.value.caller || undefined,
       callee: query.value.callee || undefined,
     }
-    if (timeRange.value && timeRange.value[0]) params.startTime = new Date(timeRange.value[0]).getTime()
-    if (timeRange.value && timeRange.value[1]) params.endTime = new Date(timeRange.value[1]).getTime()
+    // 发 ISO 8601(带本地时区偏移),避免时间戳在不同浏览器时区下的歧义
+    if (timeRange.value && timeRange.value[0]) params.startTime = new Date(timeRange.value[0]).toISOString()
+    if (timeRange.value && timeRange.value[1]) params.endTime = new Date(timeRange.value[1]).toISOString()
     if (query.value.duration !== null && query.value.duration !== undefined && query.value.duration !== '') {
       params.durationOp = query.value.durationOp
       params.duration = query.value.duration
