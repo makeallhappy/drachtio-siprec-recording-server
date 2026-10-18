@@ -55,6 +55,11 @@ function requireToken(req, res, next) {
 const ok = (res, data) => res.json({ code: 0, message: 'ok', data });
 const fail = (res, status, code, message) => res.status(status).json({ code, message, data: null });
 
+/** 布尔全文检索词转义:双引号包裹做短语匹配(ngram 下等价子串匹配) */
+function boolPhrase(s) {
+  return '"' + String(s).replace(/["\\]/g, ' ').trim() + '"';
+}
+
 /**
  * 创建 /api/v1 路由
  * @param {object} deps { pool, listTables, getCallId }
@@ -64,7 +69,7 @@ function createApiV1(deps) {
   const r = express.Router();
 
   // 全部需要 token(除健康检查外)
-  r.use('/recordings', requireToken);
+  r.use(['/recordings', '/stats'], requireToken);
 
   // 统一错误包装
   const wrap = (fn) => (req, res) => {
@@ -93,15 +98,26 @@ function createApiV1(deps) {
 
     const conds = [];
     const params = [];
-    if (caller) { conds.push('(caller_number LIKE ? OR caller_aor LIKE ? OR caller_name LIKE ?)'); params.push(`%${caller}%`, `%${caller}%`, `%${caller}%`); }
-    if (callee) { conds.push('(callee_number LIKE ? OR callee_aor LIKE ? OR callee_name LIKE ?)'); params.push(`%${callee}%`, `%${callee}%`, `%${callee}%`); }
+    // 混合检索:ngram 全文索引(走索引) + LIKE 兜底(保证短串/符号场景正确)
+    if (caller) {
+      conds.push(`(MATCH(caller_number, caller_name, caller_aor) AGAINST (? IN BOOLEAN MODE)
+                   OR caller_number LIKE ? OR caller_aor LIKE ? OR caller_name LIKE ?)`);
+      params.push(boolPhrase(caller), `%${caller}%`, `%${caller}%`, `%${caller}%`);
+    }
+    if (callee) {
+      conds.push(`(MATCH(callee_number, callee_name, callee_aor) AGAINST (? IN BOOLEAN MODE)
+                   OR callee_number LIKE ? OR callee_aor LIKE ? OR callee_name LIKE ?)`);
+      params.push(boolPhrase(callee), `%${callee}%`, `%${callee}%`, `%${callee}%`);
+    }
+    const tag = (req.query.tag || '').trim();
+    if (tag) { conds.push('thirdpty_append = ?'); params.push(tag); }
     if (startTime) { conds.push('start_time >= ?'); params.push(startTime); }
     if (endTime) { conds.push('start_time <= ?'); params.push(endTime); }
     if (minDur != null) { conds.push('duration_ms >= ?'); params.push(minDur); }
     if (maxDur != null) { conds.push('duration_ms <= ?'); params.push(maxDur); }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
-    const cols = 'id, recording_session_id, original_call_id, caller_number, caller_name, callee_number, callee_name, start_time, end_time, duration_ms';
+    const cols = 'id, recording_session_id, original_call_id, caller_number, caller_name, callee_number, callee_name, start_time, end_time, duration_ms, thirdpty_append, archived, audio_size_bytes';
     const unionSql = tables.map((t) => `SELECT ${cols}, '${t}' AS src_table FROM \`${t}\` ${where}`).join(' UNION ALL ');
 
     const [cntRows] = await pool.query(`SELECT COUNT(*) AS total FROM (${unionSql}) u`, params);
@@ -121,6 +137,9 @@ function createApiV1(deps) {
       durationMs: r.duration_ms,
       recordingSessionId: r.recording_session_id,
       originalCallId: r.original_call_id,
+      thirdPartyTag: r.thirdpty_append,
+      archived: !!r.archived,
+      audioSizeBytes: r.audio_size_bytes,
     }));
 
     ok(res, { total, page, size, items });
@@ -141,6 +160,11 @@ function createApiV1(deps) {
       calleeNumber: r.callee_number, calleeName: r.callee_name, calleeAor: r.callee_aor,
       startTime: r.start_time, endTime: r.end_time, durationMs: r.duration_ms,
       recordingSessionId: r.recording_session_id, originalCallId: r.original_call_id,
+      thirdPartyTag: r.thirdpty_append,
+      leftChannelText: r.left_channel_txt,
+      rightChannelText: r.right_channel_txt,
+      archived: !!r.archived,
+      audioSizeBytes: r.audio_size_bytes,
       sdp: r.sdp_offer, metadataXml: r.metadata_xml,
     });
   }));
@@ -172,6 +196,38 @@ function createApiV1(deps) {
       download: true,
       onNotFound: () => fail(res, 404, 40401, 'no audio file for recording'),
     });
+  }));
+
+  // ---------- 第三方标签 ----------
+  // PUT /api/v1/recordings/:recordingId/tag   body: { "tag": "crm-12345" }
+  r.put('/recordings/:recordingId/tag', wrap(async (req, res) => {
+    const { table, id } = splitRecordingId(req.params.recordingId);
+    if (!table || !id) return fail(res, 400, 40001, 'invalid recordingId');
+    const tag = req.body && req.body.tag != null ? String(req.body.tag).slice(0, 255) : null;
+    if (tag === null) return fail(res, 400, 40002, 'missing field: tag');
+    const [r2] = await pool.query(`UPDATE \`${table}\` SET thirdpty_append = ? WHERE id = ?`, [tag, id]);
+    if (r2.affectedRows === 0) return fail(res, 404, 40401, 'recording not found');
+    ok(res, { recordingId: `${table.replace('recording_metadata_', '')}_${id}`, thirdPartyTag: tag });
+  }));
+
+  // ---------- 声道转写文本 ----------
+  // PUT /api/v1/recordings/:recordingId/transcript
+  // body: { "left": "主叫文本", "right": "被叫文本" }(可只传其一)
+  r.put('/recordings/:recordingId/transcript', wrap(async (req, res) => {
+    const { table, id } = splitRecordingId(req.params.recordingId);
+    if (!table || !id) return fail(res, 400, 40001, 'invalid recordingId');
+    const b = req.body || {};
+    if (b.left == null && b.right == null) {
+      return fail(res, 400, 40002, 'missing field: left and/or right');
+    }
+    const sets = [];
+    const params = [];
+    if (b.left != null) { sets.push('left_channel_txt = ?'); params.push(String(b.left)); }
+    if (b.right != null) { sets.push('right_channel_txt = ?'); params.push(String(b.right)); }
+    params.push(id);
+    const [r2] = await pool.query(`UPDATE \`${table}\` SET ${sets.join(', ')} WHERE id = ?`, params);
+    if (r2.affectedRows === 0) return fail(res, 404, 40401, 'recording not found');
+    ok(res, { recordingId: `${table.replace('recording_metadata_', '')}_${id}`, updated: sets.length });
   }));
 
   // ---------- 实时统计:正在录音数 ----------

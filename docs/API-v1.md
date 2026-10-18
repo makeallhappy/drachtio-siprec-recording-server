@@ -213,3 +213,69 @@ GET /stats/summary?from=<ms>&to=<ms>
 
 > `inProgress` 是元数据层面 `end_time IS NULL` 的计数(历史统计用);**实时在录数请用 `/stats/active`**。
 
+
+## 8. 元数据字段扩展（2026-10）
+
+### 新增字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `thirdpty_append` | varchar(255) | **第三方应用标签**，可用 `?tag=` 过滤 |
+| `left_channel_txt` | mediumtext | **左声道（主叫）转写文本** |
+| `right_channel_txt` | mediumtext | **右声道（被叫）转写文本** |
+| `audio_size_bytes` | bigint unsigned | 音频文件大小（归档时回填） |
+| `archived` | tinyint(1) | 是否已冷归档（pcap 已转 FLAC 并删除） |
+
+列表中返回 `thirdPartyTag` / `archived` / `audioSizeBytes`；详情额外返回 `leftChannelText` / `rightChannelText`。
+
+### 标签写入
+
+```
+PUT /recordings/{recordingId}/tag
+Content-Type: application/json
+
+{ "tag": "crm-12345" }
+```
+
+```json
+{ "code": 0, "message": "ok",
+  "data": { "recordingId": "202610_27", "thirdPartyTag": "crm-12345" } }
+```
+
+按标签过滤:`GET /recordings?tag=crm-12345`
+
+### 转写文本写入
+
+```
+PUT /recordings/{recordingId}/transcript
+Content-Type: application/json
+
+{ "left": "主叫说话内容", "right": "被叫说话内容" }
+```
+
+可只传其一;`updated` 返回实际更新字段数。
+
+### 检索优化
+
+主叫/被叫过滤已改为 **ngram 全文索引 + LIKE 兜底**:
+
+- 子串可命中（如 `caller=000` 能匹配 `1000`）
+- 中文同样支持（ngram 2-gram）
+- 走 `ft_caller` / `ft_callee` 索引,数据量大时明显快于纯 LIKE
+
+### 时区约定
+
+数据库内所有 `DATETIME` 均按 **UTC** 存储与读取（连接显式 `timezone: 'Z'`）。
+对外接口返回 ISO 8601 字符串（带 `Z`），第三方自行转换本地时区。
+
+### 索引一览
+
+| 索引 | 用途 |
+|---|---|
+| `idx_start_time` | 时间范围查询 |
+| `idx_end_time` | 未结束/时长统计 |
+| `idx_recording_session_id` | 会话回溯 |
+| `idx_caller_number` / `idx_callee_number` | 精确/前缀 |
+| `idx_thirdpty_append` | 按第三方标签过滤 |
+| `ft_caller` / `ft_callee` | ngram 全文（子串/中文） |
+

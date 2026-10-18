@@ -30,6 +30,28 @@ LOG() { echo "[archive $(date '+%F %T')] $*"; }
 
 mkdir -p "$FLAC_DIR" "$TMP_DIR"
 
+# ---------- 数据库回填(archived / audio_size_bytes) ----------
+db_query() {
+  docker exec -i oreka-mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" siprec' <<< "$1" 2>/dev/null
+}
+
+# 由 pcap 文件名还原 SIP Call-ID:<callid with %40>-<random>.pcap
+pcap_to_callid() {
+  local base="$1"
+  base="${base%-*}"                 # 去掉 -<random>
+  printf '%s' "${base//%40/@}"      # %40 -> @
+}
+
+update_db_archived() {
+  local callid="$1" size="$2"
+  local safe="${callid//\'/\'\'}"   # 单引号转义
+  local tables
+  tables=$(db_query "SHOW TABLES LIKE 'recording\\_metadata\\_______';" | tail -n +2)
+  for t in $tables; do
+    db_query "UPDATE \`$t\` SET archived=1, audio_size_bytes=$size WHERE original_call_id='$safe';"
+  done
+}
+
 # ---------- ffmpeg 执行器:统一走 siprec-web 容器(里面有 ffmpeg 且能看到 /recordings) ----------
 # 用法: ffmpeg_to_flac <宿主wav相对recordings的路径> <宿主flac相对recordings的路径>
 ffmpeg_to_flac() {
@@ -100,7 +122,10 @@ while IFS= read -r -d '' pcap; do
   mv -f "$tmpflac" "$flac" 2>/dev/null || { cp "$tmpflac" "$flac" && rm -f "$tmpflac"; }
 
   if rm -f "$pcap" 2>/dev/null; then
-    LOG "归档完成: $base  ($((size/1024)) KB pcap -> $(($(stat -c%s "$flac")/1024)) KB flac)"
+    flac_size=$(stat -c%s "$flac")
+    callid=$(pcap_to_callid "$(basename "$pcap" .pcap)")
+    update_db_archived "$callid" "$flac_size" || LOG "⚠️ 数据库回填失败: $callid"
+    LOG "归档完成: $base  ($((size/1024)) KB pcap -> $((flac_size/1024)) KB flac)"
     archived=$((archived+1)); freed=$((freed+size))
   else
     LOG "⚠️ 已转 FLAC 但无权限删原 pcap(需要 sudo): $pcap"

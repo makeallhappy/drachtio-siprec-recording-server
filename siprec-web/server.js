@@ -33,6 +33,7 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME || 'siprec',
   waitForConnections: true,
   connectionLimit: 5,
+  timezone: 'Z', // 统一 UTC(DATETIME 无时区,显式约定)
 });
 
 // 用户认证库(oreka.orkuser/orkloginstring),默认同 host 的 oreka 库
@@ -44,6 +45,7 @@ const userPool = mysql.createPool({
   database: process.env.USER_DB_NAME || 'oreka',
   waitForConnections: true,
   connectionLimit: 3,
+  timezone: 'Z',
 });
 
 // ==================== 公开路由:验证码 + 登录 ====================
