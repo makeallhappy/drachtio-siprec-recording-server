@@ -20,9 +20,11 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import WaveSurfer from 'wavesurfer.js'
 import { VideoPlay } from '@element-plus/icons-vue'
+import { canNativeDecodeFlac, decodeAudioSmart } from '@/utils/flac-decode'
 
 const props = defineProps({
   url: { type: String, default: '' }, // 音频 URL(blob 或 http)
+  format: { type: String, default: '' }, // 音频格式提示: 'wav' | 'flac' | 'mp3'(blob URL 无后缀时用)
 })
 
 const waveformEl = ref(null)
@@ -70,12 +72,46 @@ function initWaveSurfer() {
   ws.on('finish', () => { playing.value = false })
 
   if (props.url) {
-    ws.load(props.url)
+    loadUrl(props.url)
   }
 }
 
-function loadUrl(url) {
-  if (ws && url) {
+/** 判断是否为 FLAC(显式 format 优先,其次 URL 后缀) */
+function isFlac(url) {
+  if (props.format) return props.format.toLowerCase() === 'flac'
+  return /\.flac(\?|$)/i.test(url)
+}
+
+/**
+ * 加载音频:WAV 直接 load;FLAC 检测原生支持,iOS 不支持则用 libflacjs 解码成 AudioBuffer 再 loadDecodedBuffer
+ */
+async function loadUrl(url) {
+  if (!ws || !url) return
+
+  // WAV / MP3 等浏览器普遍支持的格式,直接 load
+  if (!isFlac(url)) {
+    ws.load(url)
+    return
+  }
+
+  // FLAC:先检测原生支持
+  const nativeOk = await canNativeDecodeFlac()
+  if (nativeOk) {
+    ws.load(url)
+    return
+  }
+
+  // iOS Safari 等:用 libflacjs 解码成 AudioBuffer
+  try {
+    const resp = await fetch(url)
+    const blob = await resp.blob()
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    const audioBuffer = await decodeAudioSmart(blob, audioCtx)
+    // wavesurfer 支持直接加载解码后的 AudioBuffer
+    ws.loadDecodedBuffer(audioBuffer)
+  } catch (e) {
+    console.error('[WavePlayer] libflacjs decode failed:', e)
+    // 最后兜底:还是尝试直接 load(让 wavesurfer 自己处理,可能会失败)
     ws.load(url)
   }
 }

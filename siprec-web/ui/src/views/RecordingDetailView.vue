@@ -14,7 +14,7 @@
 
       <!-- 本页播放条(点播放时生成,双轨波形) -->
       <div v-if="playVisible" class="player-bar">
-        <WavePlayer v-if="playUrl" :url="playUrl" />
+        <WavePlayer v-if="playUrl" :url="playUrl" :format="playFormat" />
         <el-button text type="info" @click="closePlay">
           <el-icon><Close /></el-icon>
         </el-button>
@@ -64,6 +64,7 @@ const row = ref(null)
 // 本页播放条
 const playVisible = ref(false)
 const playUrl = ref('')
+const playFormat = ref('')
 const playLoading = ref(false)
 
 async function fetchAudioBlob(fmt) {
@@ -78,7 +79,8 @@ async function onPlay() {
   playLoading.value = true
   try {
     if (playUrl.value) URL.revokeObjectURL(playUrl.value)
-    playUrl.value = await fetchAudioBlob('wav')
+    playUrl.value = await fetchAudioBlob('flac')
+    playFormat.value = 'flac'
     playVisible.value = true
   } catch (e) {
     ElMessage.error('获取音频失败: ' + (e.response?.data?.error || e.message))
@@ -89,10 +91,10 @@ async function onPlay() {
 
 async function onDownload() {
   try {
-    const url = await fetchAudioBlob('wav')
+    const url = await fetchAudioBlob('flac')
     const a = document.createElement('a')
     a.href = url
-    a.download = `siprec_${row.value?.caller_number || 'x'}_${row.value?.callee_number || 'x'}_${route.params.id}.wav`
+    a.download = `siprec_${row.value?.caller_number || 'x'}_${row.value?.callee_number || 'x'}_${route.params.id}.flac`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)

@@ -33,7 +33,7 @@
           <el-icon><Close /></el-icon>
         </el-button>
       </div>
-      <WavePlayer v-if="playUrl" :url="playUrl" />
+      <WavePlayer v-if="playUrl" :url="playUrl" :format="playFormat" />
       <div v-else class="empty-player">点录音条目的「播放」听双轨波形</div>
     </el-card>
 
@@ -95,6 +95,7 @@ const query = ref({ caller: '', callee: '' })
 // 播放弹窗
 const playVisible = ref(false)
 const playUrl = ref('')
+const playFormat = ref('')
 const playLoading = ref(false)
 const playTitle = ref('')
 
@@ -112,7 +113,8 @@ async function onPlay(row) {
   playTitle.value = `${row.caller_number || ''} → ${row.callee_number || ''} (${fmtTime(row.start_time)})`
   try {
     if (playUrl.value) URL.revokeObjectURL(playUrl.value)
-    playUrl.value = await fetchAudioBlob(row, 'wav')
+    playUrl.value = await fetchAudioBlob(row, 'flac')
+    playFormat.value = 'flac'
     // 等 WavePlayer 组件挂载后自动加载
     setTimeout(() => {
       const ws = document.querySelector('.waveform')
@@ -127,10 +129,10 @@ async function onPlay(row) {
 
 async function onDownload(row) {
   try {
-    const url = await fetchAudioBlob(row, 'wav')
+    const url = await fetchAudioBlob(row, 'flac')
     const a = document.createElement('a')
     a.href = url
-    a.download = `siprec_${row.caller_number || 'x'}_${row.callee_number || 'x'}_${row.id}.wav`
+    a.download = `siprec_${row.caller_number || 'x'}_${row.callee_number || 'x'}_${row.id}.flac`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
