@@ -21,6 +21,7 @@ const auth = require('./auth');
 const users = require('./users');
 const audio = require('./audio');
 const createApiV1 = require('./api-v1');
+const metrics = require('./metrics');
 
 const app = express();
 app.use(express.json());
@@ -196,6 +197,29 @@ app.get('/api/recordings/:table/:id/audio', auth.requireAuth, audio.audioHandler
 app.get('/api/recordings/:table/:id/download', auth.requireAuth, (req, res, next) => {
   req.query.download = '1';
   audio.audioHandler(getCallId)(req, res, next);
+});
+
+// ==================== 看板:系统实时指标(WEB 页面用,JWT 保护) ====================
+app.get('/api/system/metrics', auth.requireAuth, async (_req, res) => {
+  try {
+    const [cpu, mem, disk] = await Promise.all([
+      metrics.cpuUsage(),
+      Promise.resolve(metrics.memoryUsage()),
+      metrics.diskUsage(process.env.RECORDING_ROOT || (fs.existsSync('/recordings') ? '/recordings' : path.join(__dirname, '..', 'recordings'))),
+    ]);
+    const [rows] = await pool.query(
+      `SELECT COUNT(*) AS active FROM active_sessions
+        WHERE last_heartbeat >= NOW(3) - INTERVAL 30 SECOND`);
+    res.json({
+      ts: Date.now(),
+      activeRecordings: rows[0].active,
+      cpu: { usagePercent: cpu, cores: metrics.cpuCount(), ...metrics.loadAvg() },
+      memory: mem,
+      disk,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err.message || err) });
+  }
 });
 
 // ==================== 对外 API v1(静态 Token,第三方对接) ====================
