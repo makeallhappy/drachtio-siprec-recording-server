@@ -138,6 +138,10 @@ app.get('/api/recordings', auth.requireAuth, async (req, res) => {
     const endTime = req.query.endTime ? new Date(Number(req.query.endTime)) : null;
     const minDur = req.query.minDuration ? Number(req.query.minDuration) : null;
     const maxDur = req.query.maxDuration ? Number(req.query.maxDuration) : null;
+    // 时长比较:durationOp=gt|lt|eq,duration 单位为秒
+    const durOp = (req.query.durationOp || '').toLowerCase();
+    const durSec = (req.query.duration !== undefined && req.query.duration !== '')
+      ? Number(req.query.duration) : null;
 
     const tables = await listTables();
     if (tables.length === 0) return res.json({ total: 0, content: [] });
@@ -150,6 +154,17 @@ app.get('/api/recordings', auth.requireAuth, async (req, res) => {
     if (endTime) { conds.push('start_time <= ?'); params.push(endTime); }
     if (minDur != null) { conds.push('duration_ms >= ?'); params.push(minDur); }
     if (maxDur != null) { conds.push('duration_ms <= ?'); params.push(maxDur); }
+    if (durSec != null && !Number.isNaN(durSec) && durSec >= 0) {
+      const ms = durSec * 1000;
+      if (durOp === 'lt') {
+        conds.push('duration_ms < ?'); params.push(ms);
+      } else if (durOp === 'eq') {
+        // “等于”按秒对齐:同一整秒内的时长(避免毫秒精度导致几乎查不到)
+        conds.push('duration_ms >= ? AND duration_ms < ?'); params.push(ms, ms + 1000);
+      } else {
+        conds.push('duration_ms > ?'); params.push(ms); // 默认大于
+      }
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
     const cols = 'id, session_id, recording_session_id, original_call_id, caller_aor, caller_name, caller_number, callee_aor, callee_name, callee_number, start_time, end_time, duration_ms, created_at';

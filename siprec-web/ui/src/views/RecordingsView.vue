@@ -18,6 +18,22 @@
             style="width: 360px"
           />
         </el-form-item>
+        <el-form-item label="通话时长">
+          <el-select v-model="query.durationOp" style="width: 90px">
+            <el-option label="大于" value="gt" />
+            <el-option label="小于" value="lt" />
+            <el-option label="等于" value="eq" />
+          </el-select>
+          <el-input-number
+            v-model="query.duration"
+            :min="0"
+            :precision="0"
+            :controls="false"
+            placeholder="秒"
+            style="width: 100px; margin-left: 8px"
+          />
+          <span class="unit-tip">秒</span>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="onSearch">查询</el-button>
           <el-button :icon="Refresh" @click="onReset">重置</el-button>
@@ -90,7 +106,7 @@ const page = ref(1)
 const size = ref(20)
 const loading = ref(false)
 const timeRange = ref(null)
-const query = ref({ caller: '', callee: '' })
+const query = ref({ caller: '', callee: '', durationOp: 'gt', duration: null })
 
 // 播放弹窗
 const playVisible = ref(false)
@@ -171,6 +187,10 @@ async function load() {
     }
     if (timeRange.value && timeRange.value[0]) params.startTime = new Date(timeRange.value[0]).getTime()
     if (timeRange.value && timeRange.value[1]) params.endTime = new Date(timeRange.value[1]).getTime()
+    if (query.value.duration !== null && query.value.duration !== undefined && query.value.duration !== '') {
+      params.durationOp = query.value.durationOp
+      params.duration = query.value.duration
+    }
     const { data } = await api.get('/api/recordings', { params })
     rows.value = data.content
     total.value = data.total
@@ -182,7 +202,12 @@ async function load() {
 }
 
 function onSearch() { page.value = 1; load() }
-function onReset() { query.value = { caller: '', callee: '' }; timeRange.value = null; page.value = 1; load() }
+function onReset() {
+  query.value = { caller: '', callee: '', durationOp: 'gt', duration: null }
+  timeRange.value = null
+  page.value = 1
+  load()
+}
 function onRowClick(row) { router.push(`/recordings/${row.src_table}/${row.id}`) }
 onMounted(load)
 </script>
@@ -190,6 +215,7 @@ onMounted(load)
 <style scoped>
 .search-card { margin-bottom: 16px; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
+.unit-tip { margin-left: 6px; font-size: 13px; color: #909399; }
 .player-card { margin-bottom: 16px; border-color: #b3d8ff; background: #ecf5ff; }
 .player-bar { display: flex; align-items: center; gap: 16px; }
 .play-title { font-size: 14px; color: #303133; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
