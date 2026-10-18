@@ -34,7 +34,11 @@
    ▼
 ┌────────────────────────────────────────────┐
 │ siprec-server (app.js)                     │
-│  • 校验是否 SIPREC(带 rs-metadata,否则拒) │
+│  • 校验是否 SIPREC(app.js srf.use 中间件: │
+│  │    Content-Type 须为 multipart/mixed,   │
+│  │    否则回 488 拒绝;                     │
+│  │    rs-metadata 存在性由 payload-parser   │
+│  │    在解析阶段进一步校验)                 │
 │  • payload-parser 解析 XML:caller/callee   │
 │    aor/name/number、recordingSessionId、    │
 │    原始 Call-ID                             │
