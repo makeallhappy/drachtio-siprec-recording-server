@@ -123,6 +123,13 @@ cat > "$SCEN" <<XML
     ]]>
   </send>
 
+  <!-- 播放预录的 RTP 音频(rtpengine 才有媒体可录) -->
+  <nop>
+    <action>
+      <exec play_pcap_audio="/tmp/scen/pcap/g711a.pcap"/>
+    </action>
+  </nop>
+
   <pause milliseconds="$((DUR * 1000))"/>
 
   <send retrans="500">
@@ -154,6 +161,7 @@ echo "=== 呼叫 sip:${CALLEE}@${HOST}:${PORT}(${CALLS} 通,每通约 ${DUR} 秒
 
 docker run --rm --network host \
   -v "$LOGDIR:/logs" \
+  -v "$PWD/test/scenarios:/tmp/scen" \
   drachtio/sipp:latest sipp "${HOST}:${PORT}" -m "$CALLS" \
   -sf "/logs/${BASE}.xml" -s "$CALLEE" \
   -trace_msg    -message_file "/logs/${BASE}_messages.log" \
