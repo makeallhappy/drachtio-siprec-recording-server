@@ -1,6 +1,7 @@
 <template>
   <div class="login-page">
     <el-card class="login-card">
+      <div class="login-title">登录到SIPREC</div>
       <el-form :model="form" @submit.prevent="onLogin">
         <el-form-item>
           <el-input v-model="form.loginString" placeholder="登录名" size="large" :prefix-icon="User" />
@@ -85,6 +86,7 @@ async function onLogin() {
 <style scoped>
 .login-page { height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
 .login-card { width: 400px; }
+.login-title { text-align: center; font-size: 18px; font-weight: 600; color: #333; margin-bottom: 24px; }
 .btn { width: 100%; }
 .captcha-row { display: flex; gap: 8px; width: 100%; }
 .captcha-row .el-input { flex: 1; }
