@@ -18,6 +18,7 @@ const https = require('https');
 const http = require('http');
 const tls = require('tls');
 const auth = require('./auth');
+const users = require('./users');
 
 const app = express();
 app.use(express.json());
@@ -66,6 +67,45 @@ app.post('/api/auth/login', async (req, res) => {
 
 /** 当前登录用户 */
 app.get('/api/auth/me', auth.requireAuth, (req, res) => res.json({ user: req.user }));
+
+// ==================== 用户管理(JWT 保护,oreka 库) ====================
+app.get('/api/users', auth.requireAuth, async (req, res) => {
+  try {
+    res.json(await users.list(userPool, req.query.includeDeleted === 'true'));
+  } catch (err) { res.status(500).json({ error: String(err.message || err) }); }
+});
+
+app.get('/api/users/:id', auth.requireAuth, async (req, res) => {
+  try {
+    const u = await users.getById(userPool, Number(req.params.id));
+    if (!u) return res.status(404).json({ error: 'not found' });
+    u.loginStrings = await users.getLoginStrings(userPool, u.id);
+    res.json(u);
+  } catch (err) { res.status(500).json({ error: String(err.message || err) }); }
+});
+
+app.post('/api/users', auth.requireAuth, async (req, res) => {
+  try {
+    const u = await users.create(userPool, req.body || {});
+    res.status(201).json(u);
+  } catch (err) { res.status(400).json({ error: String(err.message || err) }); }
+});
+
+app.put('/api/users/:id', auth.requireAuth, async (req, res) => {
+  try {
+    const u = await users.update(userPool, Number(req.params.id), req.body || {});
+    if (!u) return res.status(404).json({ error: 'not found' });
+    res.json(u);
+  } catch (err) { res.status(500).json({ error: String(err.message || err) }); }
+});
+
+app.delete('/api/users/:id', auth.requireAuth, async (req, res) => {
+  try {
+    const ok = await users.remove(userPool, Number(req.params.id));
+    if (!ok) return res.status(404).json({ error: 'not found' });
+    res.status(204).end();
+  } catch (err) { res.status(500).json({ error: String(err.message || err) }); }
+});
 
 // ==================== 业务接口(JWT 保护) ====================
 

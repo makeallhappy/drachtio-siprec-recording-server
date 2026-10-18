@@ -7,6 +7,7 @@ ENV NODE_ENV=production
 # 后端源码 + 后端生产依赖 + 前端构建产物(全部来自宿主机,构建快)
 COPY siprec-web/server.js ./
 COPY siprec-web/auth.js ./
+COPY siprec-web/users.js ./
 COPY siprec-web/node_modules ./node_modules
 COPY siprec-web/ui/dist ./public
 
