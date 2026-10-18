@@ -31,6 +31,8 @@ if (config.has('rtpengine')) {
   callHandler = require('./lib/rtpengine-call-handler');
   // start DTMF listener
   require('./lib/dtmf-event-handler')(logger);
+  // 启动活跃会话心跳(每 10 秒刷新 last_heartbeat,供实时统计)
+  require('./lib/metadata-store').startHeartbeat();
 
   // we only want to deal with siprec invites (having multipart content) in this application
   srf.use('invite', (req, res, next) => {

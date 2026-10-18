@@ -174,6 +174,78 @@ function createApiV1(deps) {
     });
   }));
 
+  // ---------- 实时统计:正在录音数 ----------
+  // GET /api/v1/stats/active?detail=1
+  // 依据 active_sessions 心跳表:last_heartbeat 在 30 秒内视为在录
+  // (容忍 3 次 10 秒心跳丢失;实例崩溃留下的行会被心跳超时过滤)
+  r.get('/stats/active', wrap(async (req, res) => {
+    const [cnt] = await pool.query(
+      `SELECT COUNT(*) AS active FROM active_sessions
+        WHERE last_heartbeat >= NOW(3) - INTERVAL 30 SECOND`);
+    const data = {
+      activeRecordings: cnt[0].active,
+      heartbeatIntervalSec: 10,
+      activeWindowSec: 30,
+      checkedAt: new Date().toISOString(),
+    };
+    if (req.query.detail === '1') {
+      const [rows] = await pool.query(
+        `SELECT session_key, call_id, recording_session_id, caller_number, callee_number,
+                start_time, last_heartbeat, TIMESTAMPDIFF(SECOND, start_time, NOW(3)) AS elapsed_sec
+           FROM active_sessions
+          WHERE last_heartbeat >= NOW(3) - INTERVAL 30 SECOND
+          ORDER BY start_time DESC`);
+      data.sessions = rows.map((x) => ({
+        sessionKey: x.session_key,
+        callId: x.call_id,
+        recordingSessionId: x.recording_session_id,
+        callerNumber: x.caller_number,
+        calleeNumber: x.callee_number,
+        startTime: x.start_time,
+        lastHeartbeat: x.last_heartbeat,
+        elapsedSec: x.elapsed_sec,
+      }));
+    }
+    ok(res, data);
+  }));
+
+  // ---------- 汇总统计 ----------
+  // GET /api/v1/stats/summary?from=<ms>&to=<ms>
+  r.get('/stats/summary', wrap(async (req, res) => {
+    const from = req.query.from ? new Date(Number(req.query.from)) : null;
+    const to = req.query.to ? new Date(Number(req.query.to)) : null;
+    const tables = await listTables();
+    if (tables.length === 0) {
+      return ok(res, { total: 0, completed: 0, inProgress: 0, totalDurationMs: 0, avgDurationMs: 0 });
+    }
+    const conds = [];
+    const params = [];
+    if (from) { conds.push('start_time >= ?'); params.push(from); }
+    if (to) { conds.push('start_time <= ?'); params.push(to); }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
+    let total = 0, completed = 0, inProgress = 0, totalDurationMs = 0;
+    for (const t of tables) {
+      const [rows] = await pool.query(
+        `SELECT COUNT(*) AS n,
+                SUM(end_time IS NOT NULL) AS done,
+                SUM(end_time IS NULL) AS running,
+                COALESCE(SUM(duration_ms), 0) AS dur
+           FROM \`${t}\` ${where}`, params);
+      total += Number(rows[0].n || 0);
+      completed += Number(rows[0].done || 0);
+      inProgress += Number(rows[0].running || 0);
+      totalDurationMs += Number(rows[0].dur || 0);
+    }
+    ok(res, {
+      total, completed, inProgress, totalDurationMs,
+      avgDurationMs: completed > 0 ? Math.round(totalDurationMs / completed) : 0,
+      from: from ? from.toISOString() : null,
+      to: to ? to.toISOString() : null,
+      tables: tables.length,
+    });
+  }));
+
   // ---------- 健康检查(公开,不需要 token) ----------
   r.get('/health', async (_req, res) => {
     try { await pool.query('SELECT 1'); ok(res, { status: 'up' }); }

@@ -152,3 +152,64 @@ curl -sk -H "Authorization: Bearer $TOKEN" -OJ \
 | 响应 | 直接返回数据 | 统一 `{code,message,data}` |
 | 用途 | WEB 页面 | 第三方系统对接 |
 
+
+## 6. 实时统计:正在录音数
+
+```
+GET /stats/active?detail=1
+```
+
+基于 `active_sessions` 心跳表:**每 10 秒**刷新一次 `last_heartbeat`,统计时只认 **30 秒内**有心跳的会话(容忍 3 次心跳丢失)。
+
+```json
+{
+  "code": 0, "message": "ok",
+  "data": {
+    "activeRecordings": 1,
+    "heartbeatIntervalSec": 10,
+    "activeWindowSec": 30,
+    "checkedAt": "2026-10-18T18:09:55.296Z",
+    "sessions": [
+      {
+        "sessionKey": "recording_metadata_202610_27",
+        "callId": "1-1@127.0.1.1",
+        "callerNumber": "1000",
+        "calleeNumber": "101",
+        "startTime": "2026-10-18T18:09:31.000Z",
+        "lastHeartbeat": "2026-10-18T18:09:55.000Z",
+        "elapsedSec": 24
+      }
+    ]
+  }
+}
+```
+
+> 不加 `detail=1` 只返回计数,开销极小,可高频轮询(建议 ≥10 秒)。
+> 相比"用元数据 `end_time IS NULL` 推断",心跳表能自动排除进程崩溃留下的僵尸记录。
+
+## 7. 汇总统计
+
+```
+GET /stats/summary?from=<ms>&to=<ms>
+```
+
+`from`/`to` 为毫秒时间戳(按 `start_time` 过滤),可省略表示全部。
+
+```json
+{
+  "code": 0, "message": "ok",
+  "data": {
+    "total": 25,
+    "completed": 25,
+    "inProgress": 0,
+    "totalDurationMs": 194645,
+    "avgDurationMs": 7786,
+    "from": "2026-10-17T18:10:13.000Z",
+    "to": null,
+    "tables": 1
+  }
+}
+```
+
+> `inProgress` 是元数据层面 `end_time IS NULL` 的计数(历史统计用);**实时在录数请用 `/stats/active`**。
+
