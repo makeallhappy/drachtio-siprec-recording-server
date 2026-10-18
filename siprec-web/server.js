@@ -20,6 +20,7 @@ const tls = require('tls');
 const auth = require('./auth');
 const users = require('./users');
 const audio = require('./audio');
+const createApiV1 = require('./api-v1');
 
 const app = express();
 app.use(express.json());
@@ -194,6 +195,9 @@ app.get('/api/recordings/:table/:id/download', auth.requireAuth, (req, res, next
   req.query.download = '1';
   audio.audioHandler(getCallId)(req, res, next);
 });
+
+// ==================== 对外 API v1(静态 Token,第三方对接) ====================
+app.use('/api/v1', createApiV1({ pool, listTables, getCallId }));
 
 /** 健康检查(公开,供探活) */
 app.get('/api/health', async (_req, res) => {

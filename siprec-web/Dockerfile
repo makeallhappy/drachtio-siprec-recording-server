@@ -13,6 +13,7 @@ COPY siprec-web/server.js ./
 COPY siprec-web/auth.js ./
 COPY siprec-web/users.js ./
 COPY siprec-web/audio.js ./
+COPY siprec-web/api-v1.js ./
 COPY siprec-web/node_modules ./node_modules
 COPY siprec-web/ui/dist ./public
 

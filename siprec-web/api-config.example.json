@@ -1,0 +1,3 @@
+{
+  "apiToken": "CHANGE_ME_生成方法: openssl rand -hex 32"
+}

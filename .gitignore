@@ -70,3 +70,4 @@ recordings/*.wav
 recordings/**/*.wav
 recordings/**/*.mp3
 recordings/**/*.flac
+siprec-web/api-config.json
