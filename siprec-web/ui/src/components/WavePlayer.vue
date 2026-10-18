@@ -33,6 +33,12 @@ const duration = ref(0)
 const channelMode = ref('both') // both | left | right
 
 let ws = null
+let audioCtx = null
+let splitter = null
+let gainL = null
+let gainR = null
+let merger = null
+let sourceNode = null
 
 function fmtTime(sec) {
   if (!sec || isNaN(sec)) return '0:00'
@@ -64,6 +70,8 @@ function initWaveSurfer() {
 
   ws.on('ready', () => {
     duration.value = ws.getDuration()
+    // 音频加载完成后初始化声道控制
+    setupChannelControl()
   })
   ws.on('audioprocess', (t) => { currentTime.value = t })
   ws.on('play', () => { playing.value = true })
@@ -81,6 +89,49 @@ function loadUrl(url) {
   }
 }
 
+/** 初始化 Web Audio 声道分离:audio element → ChannelSplitter → GainL/GainR → ChannelMerger → destination */
+function setupChannelControl() {
+  if (audioCtx) return // 已初始化
+  const audio = ws?.getMediaElement?.()
+  if (!audio) return
+
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    sourceNode = audioCtx.createMediaElementSource(audio)
+    splitter = audioCtx.createChannelSplitter(2)
+    gainL = audioCtx.createGain()
+    gainR = audioCtx.createGain()
+    merger = audioCtx.createChannelMerger(2)
+
+    sourceNode.connect(splitter)
+    splitter.connect(gainL, 0) // 左声道 → gainL
+    splitter.connect(gainR, 1) // 右声道 → gainR
+    gainL.connect(merger, 0, 0) // gainL → 合并器左
+    gainR.connect(merger, 0, 1) // gainR → 合并器右
+    merger.connect(audioCtx.destination)
+
+    // 应用当前声道模式
+    applyChannelMode()
+  } catch (e) {
+    console.warn('[WavePlayer] Web Audio 声道控制初始化失败:', e)
+  }
+}
+
+/** 应用声道模式到 gain 节点 */
+function applyChannelMode() {
+  if (!gainL || !gainR) return
+  if (channelMode.value === 'both') {
+    gainL.gain.value = 1
+    gainR.gain.value = 1
+  } else if (channelMode.value === 'left') {
+    gainL.gain.value = 1
+    gainR.gain.value = 0
+  } else if (channelMode.value === 'right') {
+    gainL.gain.value = 0
+    gainR.gain.value = 1
+  }
+}
+
 function togglePlay() {
   if (ws) ws.playPause()
 }
@@ -91,12 +142,11 @@ function stopAll() {
 
 function setChannel(mode) {
   channelMode.value = mode
-  if (!ws) return
-  // wavesurfer v7 的 setMuted 是全局的;要实现单轨听,得用 Web Audio API 的 ChannelSplitter
-  // 这里用简单方案:调整左右声道音量(通过 backend 的 gainNode)
-  const backend = ws.getBackend?.()
-  if (backend && backend.gainNode) {
-    // 简化:通过 setVolume 做不到分左右,先标记模式(后续可扩展)
+  // 如果 Web Audio 还没初始化(可能音频还没 ready),先初始化
+  if (!audioCtx) {
+    setupChannelControl()
+  } else {
+    applyChannelMode()
   }
 }
 
@@ -109,6 +159,15 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (audioCtx) {
+    try { audioCtx.close() } catch {}
+    audioCtx = null
+    splitter = null
+    gainL = null
+    gainR = null
+    merger = null
+    sourceNode = null
+  }
   if (ws) {
     try { ws.destroy() } catch {}
     ws = null
