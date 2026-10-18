@@ -66,3 +66,7 @@ test/tmp/rtpengine/metadata/**
 test/tmp/rtpengine/tmp/**
 recordings/
 sipp-logs/
+recordings/*.wav
+recordings/**/*.wav
+recordings/**/*.mp3
+recordings/**/*.flac
