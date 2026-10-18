@@ -19,6 +19,7 @@ const http = require('http');
 const tls = require('tls');
 const auth = require('./auth');
 const users = require('./users');
+const audio = require('./audio');
 
 const app = express();
 app.use(express.json());
@@ -182,9 +183,17 @@ app.get('/api/tables', auth.requireAuth, async (_req, res) => {
   catch (err) { res.status(500).json({ error: String(err.message || err) }); }
 });
 
-/** 播放/下载 —— 先留空(占位 501) */
-app.get('/api/recordings/:table/:id/audio', auth.requireAuth, (_req, res) => res.status(501).json({ error: 'audio playback not implemented yet' }));
-app.get('/api/recordings/:table/:id/download', auth.requireAuth, (_req, res) => res.status(501).json({ error: 'download not implemented yet' }));
+/** 播放/下载 —— 按 original_call_id 找 pcap → 转 wav/mp3 → 带 Range 流式返回 */
+async function getCallId(table, id) {
+  if (!/^recording_metadata_\d{6}$/.test(table)) return null;
+  const [rows] = await pool.query(`SELECT original_call_id FROM \`${table}\` WHERE id = ?`, [id]);
+  return rows.length ? rows[0].original_call_id : null;
+}
+app.get('/api/recordings/:table/:id/audio', auth.requireAuth, audio.audioHandler(getCallId));
+app.get('/api/recordings/:table/:id/download', auth.requireAuth, (req, res, next) => {
+  req.query.download = '1';
+  audio.audioHandler(getCallId)(req, res, next);
+});
 
 /** 健康检查(公开,供探活) */
 app.get('/api/health', async (_req, res) => {

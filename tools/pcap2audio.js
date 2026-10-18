@@ -10,7 +10,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
 // ---------- G.711 A-law 解码 ----------
 const ALAW_TABLE = (() => {
@@ -117,15 +117,27 @@ function writeWav(outPath, legs, mix) {
   return n;
 }
 
-// ---------- docker ffmpeg 转 mp3/flac ----------
+// ---------- ffmpeg 转 mp3/flac ----------
 const FFMPEG_IMG = 'jrottenberg/ffmpeg:4.4-alpine';
+
+function hasLocalFfmpeg() {
+  const r = spawnSync('ffmpeg', ['-version'], { stdio: 'pipe' });
+  return !r.error && r.status === 0;
+}
+
 function transcode(wavPath, fmt) {
   const dir = path.dirname(path.resolve(wavPath));
   const base = path.basename(wavPath);
   const out = base.replace(/\.wav$/, '.' + fmt);
   const codec = fmt === 'mp3' ? ['-codec:a', 'libmp3lame', '-q:a', '4'] : ['-codec:a', 'flac'];
-  execFileSync('docker', ['run', '--rm', '-v', `${dir}:/work`, '-w', '/work',
-    FFMPEG_IMG, '-y', '-i', base, ...codec, out], { stdio: 'pipe' });
+  if (hasLocalFfmpeg()) {
+    // 容器/装了 ffmpeg 的宿主机:直接本地转码
+    execFileSync('ffmpeg', ['-y', '-i', wavPath, ...codec, path.join(dir, out)], { stdio: 'pipe' });
+  } else {
+    // 无本地 ffmpeg:回退 docker 镜像转码
+    execFileSync('docker', ['run', '--rm', '-v', `${dir}:/work`, '-w', '/work',
+      FFMPEG_IMG, '-y', '-i', base, ...codec, out], { stdio: 'pipe' });
+  }
   return path.join(dir, out);
 }
 

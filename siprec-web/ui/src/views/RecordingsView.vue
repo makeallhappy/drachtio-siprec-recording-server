@@ -40,8 +40,8 @@
         <el-table-column prop="recording_session_id" label="录音会话 ID" min-width="180" show-overflow-tooltip />
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" text type="primary" disabled>播放</el-button>
-            <el-button size="small" text type="primary" disabled>下载</el-button>
+            <el-button size="small" text type="primary" @click.stop="onPlay(row)">播放</el-button>
+            <el-button size="small" text type="primary" @click.stop="onDownload(row)">下载</el-button>
           </template>
         </el-table-column>
         <template #empty>
@@ -60,6 +60,12 @@
         @current-change="load"
       />
     </el-card>
+
+    <!-- 播放弹窗(内嵌 audio,带波形控件) -->
+    <el-dialog v-model="playVisible" title="播放录音" width="520px" @close="closePlay">
+      <div class="play-title">{{ playTitle }}</div>
+      <audio v-if="playUrl" :src="playUrl" controls autoplay class="player"></audio>
+    </el-dialog>
   </div>
 </template>
 
@@ -78,6 +84,55 @@ const size = ref(20)
 const loading = ref(false)
 const timeRange = ref(null)
 const query = ref({ caller: '', callee: '' })
+
+// 播放弹窗
+const playVisible = ref(false)
+const playUrl = ref('')
+const playLoading = ref(false)
+const playTitle = ref('')
+
+/** 带 JWT 拉音频 blob,返回可播放的对象 URL */
+async function fetchAudioBlob(row, fmt) {
+  const { data } = await api.get(`/api/recordings/${row.src_table}/${row.id}/audio`, {
+    params: { fmt },
+    responseType: 'blob',
+  })
+  return URL.createObjectURL(data)
+}
+
+async function onPlay(row) {
+  playLoading.value = true
+  playTitle.value = `${row.caller_number || ''} → ${row.callee_number || ''} (${fmtTime(row.start_time)})`
+  try {
+    if (playUrl.value) URL.revokeObjectURL(playUrl.value)
+    playUrl.value = await fetchAudioBlob(row, 'wav')
+    playVisible.value = true
+  } catch (e) {
+    ElMessage.error('获取音频失败: ' + (e.response?.data?.error || e.message))
+  } finally {
+    playLoading.value = false
+  }
+}
+
+async function onDownload(row) {
+  try {
+    const url = await fetchAudioBlob(row, 'wav')
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `siprec_${row.caller_number || 'x'}_${row.callee_number || 'x'}_${row.id}.wav`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  } catch (e) {
+    ElMessage.error('下载失败: ' + (e.response?.data?.error || e.message))
+  }
+}
+
+function closePlay() {
+  playVisible.value = false
+  if (playUrl.value) { URL.revokeObjectURL(playUrl.value); playUrl.value = '' }
+}
 
 function fmtTime(t) {
   if (!t) return ''
@@ -116,11 +171,12 @@ async function load() {
 function onSearch() { page.value = 1; load() }
 function onReset() { query.value = { caller: '', callee: '' }; timeRange.value = null; page.value = 1; load() }
 function onRowClick(row) { router.push(`/recordings/${row.src_table}/${row.id}`) }
-
 onMounted(load)
 </script>
 
 <style scoped>
 .search-card { margin-bottom: 16px; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
+.play-title { margin-bottom: 14px; font-size: 14px; color: #606266; }
+.player { width: 100%; }
 </style>

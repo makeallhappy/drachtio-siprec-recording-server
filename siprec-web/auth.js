@@ -62,20 +62,24 @@ function flagIsSet(v) {
  * @param {object} pool oreka 库的 mysql2 pool
  */
 async function authenticate(pool, loginString, password) {
+  // 同一 loginString 可能对应多个用户(oreka 允许);逐条查,跳过已删/已禁,
+  // 直到找到一条有效且密码匹配的。
   const [rows] = await pool.query(
     `SELECT u.id, u.firstname, u.lastname, u.email, u.password, u.disabled, u.deleted
        FROM orkloginstring ls JOIN orkuser u ON ls.user_id = u.id
       WHERE ls.loginString = ?
-      ORDER BY ls.id ASC LIMIT 1`,
+      ORDER BY ls.id ASC`,
     [loginString]
   );
-  if (rows.length === 0) return null;
-  const u = rows[0];
-  if (flagIsSet(u.disabled) || flagIsSet(u.deleted)) return null;
-  // BCrypt 校验(orkuser 现已是 BCrypt;$2a$ 前缀)
-  const ok = await bcrypt.compare(password, u.password);
-  if (!ok) return null;
-  return { id: u.id, firstname: u.firstname, lastname: u.lastname, email: u.email };
+  for (const u of rows) {
+    if (flagIsSet(u.disabled) || flagIsSet(u.deleted)) continue; // 跳过无效用户
+    // BCrypt 校验(orkuser 现已是 BCrypt;$2a$/$2b$ 前缀)
+    const ok = await bcrypt.compare(password, u.password);
+    if (ok) {
+      return { id: u.id, firstname: u.firstname, lastname: u.lastname, email: u.email };
+    }
+  }
+  return null;
 }
 
 function signToken(user, loginString) {
