@@ -1,5 +1,142 @@
 # drachtio-siprec-recording-server ![Build Status](https://github.com/drachtio/drachtio-siprec-recording-server/workflows/CI/badge.svg)
 
+> **本项目由 AI 编程**
+>
+> 本仓库在开源项目 drachtio-siprec-recording-server 基础上的二次开发（分月表元数据落库、查询 WEB、双轨波形播放等定制功能）由 AI 辅助完成。原始项目版权归原作者所有，见下方英文说明。
+
+---
+
+## 系统架构(从 SIP INVITE 到落库、查询)
+
+### 一、组件总览(5 个常驻容器,宿主机网络,均 `--restart unless-stopped`)
+
+| 容器 | 角色 | 关键端口 | 镜像 |
+|---|---|---|---|
+| **drachtio** | SIP 信令服务器 | 5060/udp(SIP), 9023(控制) | drachtio/drachtio-server |
+| **rtpengine** | 媒体录音引擎 | 22222/udp(NG 控制), 30000-30100/udp(RTP) | drachtio/rtpengine |
+| **siprec-server** | 录音服务器本体(Node) | 22223(本地 DTMF) | 本地构建 `siprec-server` |
+| **oreka-mysql** | 数据库 | 3306 | mysql:8.0 |
+| **siprec-web** | 查询 WEB(Node + Vue3) | 8444(HTTPS) | 本地构建 `siprec-web` |
+
+### 二、录音数据流(INVITE → 落库)
+
+```
+① SIP INVITE(SIPREC 客户端:PBX / sipp)
+   │  INVITE sip:X@<host>:5060
+   │  Content-Type: multipart/mixed
+   │  ├─ application/sdp        (caller 腿 + callee 腿 两路 SDP)
+   │  └─ application/rs-metadata(录音会话元数据 XML)
+   ▼
+┌────────────────────────────────────────────┐
+│ drachtio (5060/udp)                        │  收 SIP 信令
+└────────────────────────────────────────────┘
+   │  控制面转发(9023)
+   ▼
+┌────────────────────────────────────────────┐
+│ siprec-server (app.js)                     │
+│  • 校验是否 SIPREC(带 rs-metadata,否则拒) │
+│  • payload-parser 解析 XML:caller/callee   │
+│    aor/name/number、recordingSessionId、    │
+│    原始 Call-ID                             │
+│  ├─► ② onCallStart():INSERT 元数据到 MySQL │
+│  │      siprec.recording_metadata_YYYYMM    │
+│  │      (end_time/duration 暂 NULL,        │
+│  │       original_call_id = SIP Call-ID)   │
+│  └─► ③ NG 协议控制 rtpengine 建两路端点:   │
+│        offer/answer(127.0.0.1:22222),      │
+│        flag 'record call'                   │
+└────────────────────────────────────────────┘
+   │  NG 控制(offer/answer/delete)
+   ▼
+┌────────────────────────────────────────────┐
+│ rtpengine (22222/udp 控制)                 │
+│  • 接管两路 RTP 媒体流(30000-30100/udp)   │
+│  • ④ 边转发边录音 → pcap 落盘:             │
+│    recordings/pcaps/<callid>-<rand>.pcap   │
+│    (@ 编码为 %40;recording-method=pcap)    │
+└────────────────────────────────────────────┘
+   ▲
+   │ RTP 音频流(PCMA/G.711,主叫+被叫两路)
+(通话进行中……)
+   │  ⑤ BYE / destroy
+   ▼
+┌────────────────────────────────────────────┐
+│ siprec-server  onCallEnd()                 │
+│  • rtpengine delete(清理端点)              │
+│  └─► UPDATE 元数据:回填 end_time +         │
+│      duration_ms(TIMESTAMPDIFF)            │
+└────────────────────────────────────────────┘
+```
+
+录音完成后数据齐了:
+- **MySQL** `siprec.recording_metadata_YYYYMM` 一行:caller/callee 号码、起止时间、时长、`original_call_id`、SDP、rs-metadata XML
+- **磁盘** `recordings/pcaps/<callid>-<rand>.pcap`:双声道 RTP(PCMA)
+
+### 三、查询/播放链路(siprec-web)
+
+```
+用户浏览器(HTTPS 8444,Vue3 SPA)
+   │  ① 登录:验证码(svg-captcha)+ 密码
+   │     → bcrypt 校验 oreka.orkuser → 签 JWT
+   ▼
+┌────────────────────────────────────────────┐
+│ siprec-web (Express,JWT 保护)              │
+│  ② 查询 GET /api/recordings                │
+│     → 跨月 UNION recording_metadata_* 分表 │
+│     → 主叫/被叫/时间/时长过滤 → 分页       │
+│  ③ 播放/下载 GET /api/recordings/:t/:id/audio│
+│     → 读该行 original_call_id              │
+│     → 匹配 recordings/pcaps/<callid>-*.pcap│
+│     → tools/pcap2audio.js(纯 Node 零依赖):│
+│        pcap → 拆 RTP(PT=8 PCMA)按 SSRC 分腿│
+│        → G.711 A-law 解码 → 双声道 WAV     │
+│     → 容器内 ffmpeg → 可转 MP3/FLAC        │
+│     → recordings/cache/ 缓存(不重复转)    │
+│     → HTTP Range 流式返回(206 拖动)       │
+└────────────────────────────────────────────┘
+   ▼
+浏览器渲染:
+  • wavesurfer.js 双轨波形(splitChannels)
+    左声道=主叫(绿),右声道=被叫(橙)
+  • Web Audio ChannelSplitter + GainNode 分路播放
+    (双轨 / 只听主叫 / 只听被叫)
+```
+
+### 四、关键技术决策
+
+| 决策 | 原因 |
+|---|---|
+| 宿主机网络 | SIP/RTP 对 NAT 敏感,host 网络最稳(和测试一致) |
+| 分月表 `recording_metadata_YYYYMM` | 追加型时序数据,分表好维护;查询按 UNION 拼 |
+| `original_call_id` 关联 pcap | rtpengine 文件名用 SIP Call-ID,落库存它才能找到录音文件 |
+| 落库失败不阻断录音 | onCallStart/onCallEnd 的 catch 只 log,录音主流程绝不被 DB 拖垮 |
+| rtpengine(不用 freeswitch) | 架构更轻;redis 也不需要(那是 freeswitch 模式缓存 SDP 用的) |
+| WAV 播放 | 全浏览器含 iOS 通吃;libflacjs 是 Node 库会导致白屏,已回退 |
+| JWT + 验证码,复用 oreka.orkuser | 认证从 orekaweb 平移,admin/admin 直接可用 |
+| AVAYA CA 证书(8444 HTTPS) | 复用 ork.p12,内网浏览器信任 AVAYA CA 则绿锁 |
+
+### 五、一键运维
+
+```bash
+./siprec-stack.sh start    # 拉起 drachtio + rtpengine + siprec-server
+./siprec-stack.sh stop     # 停掉
+./siprec-stack.sh restart  # 重启
+./siprec-stack.sh status   # 看 5 容器状态
+./siprec-stack.sh logs     # 跟踪录音服务器日志
+
+./sipp-call.sh 1000        # 发 SIPREC 测试呼叫(指定被叫号码)
+./sipp-test.sh             # 固定回归测试 + 全链路验证(日志/落库/录音)
+
+node tools/pcap2audio.js <pcap|目录> [--mix] [--mp3|--flac] [--all]
+                           # 手动把 pcap 转成 WAV/MP3/FLAC
+```
+
+查询 WEB:`https://<host>:8444`(默认 admin/admin,首次登录请改密码)。
+
+---
+
+# 原始项目说明(英文)
+
 An open source implementation of a SIPREC recording server based on [dractio](https://drachtio.org) and using either
 * [rtpengine](https://github.com/sipwise/rtpengine) or
 * [Freeswitch](https://freeswitch.com/)
