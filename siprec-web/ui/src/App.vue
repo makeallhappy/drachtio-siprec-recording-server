@@ -5,7 +5,7 @@
   <!-- 登录后:左侧边栏布局 -->
   <el-container v-else class="layout">
     <el-aside width="210px" class="aside">
-      <div class="brand">SIPREC 录音查询</div>
+      <div class="brand">SIPREC</div>
       <el-menu :default-active="$route.path" class="menu" background-color="#d9ecff"
                text-color="#303133" active-text-color="#0960bd" router>
         <el-menu-item index="/dashboard">
