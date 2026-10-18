@@ -1,0 +1,75 @@
+/tmp/pcaps/1-1%40127.0.1.1-b92b6946a1a4c9ca.pcap
+
+
+Timestamp started ms: 1792335860361.717
+SDP mode: offer
+SDP before RTP packet: 1
+
+v=0
+o=user1 53655765 2353687637 IN IP4 127.0.0.1
+s=-
+c=IN IP4 127.0.0.1
+t=0 0
+m=audio 30000 RTP/AVP 8
+c=IN IP4 127.0.0.1
+a=direction:both
+a=label:a_leg
+a=rtpmap:8 PCMA/8000
+a=sendonly
+a=rtcp:30001
+
+Timestamp started ms: 1792335860361.718
+SDP mode: answer
+SDP before RTP packet: 1
+
+v=0
+o=user1 53655765 2353687637 IN IP4 127.0.0.1
+s=-
+c=IN IP4 127.0.0.1
+t=0 0
+m=audio 30014 RTP/AVP 8
+c=IN IP4 127.0.0.1
+a=direction:both
+a=label:b_leg
+a=rtpmap:8 PCMA/8000
+a=sendonly
+a=rtcp:30015
+
+Timestamp started ms: 1792335860362.021
+SDP mode: offer
+SDP before RTP packet: 2
+
+v=0
+o=user1 53655765 2353687637 IN IP4 127.0.0.1
+s=-
+c=IN IP4 127.0.0.1
+t=0 0
+m=audio 30000 RTP/AVP 8
+c=IN IP4 127.0.0.1
+a=direction:both
+a=label:a_leg
+a=rtpmap:8 PCMA/8000
+a=sendonly
+a=rtcp:30001
+
+Timestamp started ms: 1792335860363.560
+SDP mode: answer
+SDP before RTP packet: 2
+
+v=0
+o=user1 53655765 2353687637 IN IP4 127.0.0.1
+s=-
+c=IN IP4 127.0.0.1
+t=0 0
+m=audio 30014 RTP/AVP 8
+c=IN IP4 127.0.0.1
+a=direction:both
+a=label:b_leg
+a=rtpmap:8 PCMA/8000
+a=sendonly
+a=rtcp:30015
+
+Timestamp terminated ms(first monologue): 1792335863384.544
+
+call start time: 2026-10-18T15:04:20
+call end time: 2026-10-18T15:04:23
