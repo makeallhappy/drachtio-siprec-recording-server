@@ -25,6 +25,17 @@
       </el-form>
     </el-card>
 
+    <!-- 固定播放条(查询条件框下方,不弹窗) -->
+    <el-card v-if="playVisible" class="player-card" shadow="never">
+      <div class="player-bar">
+        <span class="play-title" :title="playTitle">{{ playTitle }}</span>
+        <audio v-if="playUrl" :src="playUrl" controls autoplay class="player"></audio>
+        <el-button text type="info" class="close-btn" @click="closePlay">
+          <el-icon><Close /></el-icon>
+        </el-button>
+      </div>
+    </el-card>
+
     <el-card>
       <el-table :data="rows" v-loading="loading" stripe @row-click="onRowClick" style="cursor: pointer; width: 100%">
         <el-table-column prop="start_time" label="开始时间" width="180">
@@ -60,12 +71,6 @@
         @current-change="load"
       />
     </el-card>
-
-    <!-- 播放弹窗(内嵌 audio,带波形控件) -->
-    <el-dialog v-model="playVisible" title="播放录音" width="520px" @close="closePlay">
-      <div class="play-title">{{ playTitle }}</div>
-      <audio v-if="playUrl" :src="playUrl" controls autoplay class="player"></audio>
-    </el-dialog>
   </div>
 </template>
 
@@ -73,7 +78,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh } from '@element-plus/icons-vue'
+import { Search, Refresh, Close } from '@element-plus/icons-vue'
 import api from '@/api'
 
 const router = useRouter()
@@ -177,6 +182,9 @@ onMounted(load)
 <style scoped>
 .search-card { margin-bottom: 16px; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
-.play-title { margin-bottom: 14px; font-size: 14px; color: #606266; }
-.player { width: 100%; }
+.player-card { margin-bottom: 16px; border-color: #b3d8ff; background: #ecf5ff; }
+.player-bar { display: flex; align-items: center; gap: 16px; }
+.play-title { font-size: 14px; color: #303133; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.player { flex: 1; height: 36px; }
+.close-btn { flex-shrink: 0; }
 </style>
