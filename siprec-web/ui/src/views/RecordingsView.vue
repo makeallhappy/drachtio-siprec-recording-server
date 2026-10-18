@@ -25,16 +25,16 @@
       </el-form>
     </el-card>
 
-    <!-- 常驻播放条(查询条件框下方,一直在) -->
+    <!-- 常驻播放条(查询条件框下方,双轨波形) -->
     <el-card class="player-card" shadow="never">
       <div class="player-bar">
         <span class="play-title" :title="playTitle">{{ playTitle || '未播放' }}</span>
-        <audio v-if="playUrl" :src="playUrl" controls autoplay class="player"></audio>
-        <audio v-else controls class="player" disabled></audio>
         <el-button text type="info" class="close-btn" @click="closePlay">
           <el-icon><Close /></el-icon>
         </el-button>
       </div>
+      <WavePlayer v-if="playUrl" :url="playUrl" />
+      <div v-else class="empty-player">点录音条目的「播放」听双轨波形</div>
     </el-card>
 
     <el-card>
@@ -80,6 +80,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Refresh, Close } from '@element-plus/icons-vue'
+import WavePlayer from '@/components/WavePlayer.vue'
 import api from '@/api'
 
 const router = useRouter()
@@ -112,7 +113,11 @@ async function onPlay(row) {
   try {
     if (playUrl.value) URL.revokeObjectURL(playUrl.value)
     playUrl.value = await fetchAudioBlob(row, 'wav')
-    playVisible.value = true
+    // 等 WavePlayer 组件挂载后自动加载
+    setTimeout(() => {
+      const ws = document.querySelector('.waveform')
+      if (ws) ws.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }, 100)
   } catch (e) {
     ElMessage.error('获取音频失败: ' + (e.response?.data?.error || e.message))
   } finally {

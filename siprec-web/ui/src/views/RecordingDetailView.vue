@@ -12,9 +12,9 @@
         </div>
       </template>
 
-      <!-- 本页播放条(点播放时生成) -->
+      <!-- 本页播放条(点播放时生成,双轨波形) -->
       <div v-if="playVisible" class="player-bar">
-        <audio v-if="playUrl" :src="playUrl" controls autoplay class="player"></audio>
+        <WavePlayer v-if="playUrl" :url="playUrl" />
         <el-button text type="info" @click="closePlay">
           <el-icon><Close /></el-icon>
         </el-button>
@@ -54,6 +54,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Back, Download, VideoPlay, Close } from '@element-plus/icons-vue'
+import WavePlayer from '@/components/WavePlayer.vue'
 import api from '@/api'
 
 const route = useRoute()
