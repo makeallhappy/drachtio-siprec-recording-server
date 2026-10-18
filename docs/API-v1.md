@@ -326,3 +326,47 @@ recordingId = <YYYYMM>_<id>
 > 提示:调用方应把 `recordingId` 当作**不透明字符串**保存和传递,不要解析其结构。
 > 若未来分表策略调整,结构可能变化,但接口语义不变。
 
+
+## 10. 存储统计
+
+```
+GET /stats/storage
+```
+
+返回录音各目录占用 + 底层文件系统容量(宿主机磁盘) + 低空间标记。
+
+```json
+{
+  "code": 0, "message": "ok",
+  "data": {
+    "pcapBytes": 1352148, "pcapFiles": 28,
+    "flacBytes": 195174,  "flacFiles": 4,
+    "cacheBytes": 625571, "cacheFiles": 6,
+    "tmpBytes": 0, "tmpFiles": 0,
+    "totalRecordingBytes": 2172893,
+    "disk": {
+      "totalBytes": 187926462464,
+      "freeBytes": 71670566912,
+      "usedPercent": 61.9,
+      "lowSpace": false,
+      "lowSpaceThresholdPercent": 10
+    },
+    "recordingRoot": "/recordings",
+    "checkedAt": "2026-10-18T18:49:51.014Z"
+  }
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `pcapBytes/Files` | 原始录音(pcap)占用与文件数 |
+| `flacBytes/Files` | 冷归档 FLAC 占用 |
+| `cacheBytes/Files` | 播放转码缓存(可清理) |
+| `tmpBytes/Files` | 归档中间文件(正常应为 0) |
+| `disk.totalBytes/freeBytes` | 底层文件系统总容量/可用(即宿主机磁盘) |
+| `disk.usedPercent` | 磁盘使用率(%) |
+| `disk.lowSpace` | 可用空间 < 10% 时为 `true`,可据此告警 |
+
+> 实现说明:容器通过 bind mount 看到的是同一份文件系统,因此 `du`(目录占用)与 `statfs`(磁盘容量)都反映宿主机真实数据。
+> 轮询建议 ≥ 60 秒(目录递归统计有 I/O 开销,文件量大时尤甚)。
+

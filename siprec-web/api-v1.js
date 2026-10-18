@@ -52,6 +52,30 @@ function requireToken(req, res, next) {
   next();
 }
 
+/** 录音根目录(容器 /recordings;宿主机开发为 ../recordings) */
+const REC_ROOT = process.env.RECORDING_ROOT ||
+  (fs.existsSync('/recordings') ? '/recordings' : path.join(__dirname, '..', 'recordings'));
+
+/** 递归统计目录大小与文件数 */
+async function dirStats(dir) {
+  let bytes = 0;
+  let files = 0;
+  async function walk(d) {
+    let entries;
+    try { entries = await fs.promises.readdir(d, { withFileTypes: true }); }
+    catch { return; }
+    for (const e of entries) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) await walk(p);
+      else if (e.isFile()) {
+        try { const st = await fs.promises.stat(p); bytes += st.size; files++; } catch { /* ignore */ }
+      }
+    }
+  }
+  await walk(dir);
+  return { bytes, files };
+}
+
 const ok = (res, data) => res.json({ code: 0, message: 'ok', data });
 const fail = (res, status, code, message) => res.status(status).json({ code, message, data: null });
 
@@ -263,6 +287,54 @@ function createApiV1(deps) {
       }));
     }
     ok(res, data);
+  }));
+
+  // ---------- 存储统计 ----------
+  // GET /api/v1/stats/storage
+  // 返回各录音目录占用 + 底层文件系统容量(宿主机磁盘) + 低空间标记
+  r.get('/stats/storage', wrap(async (_req, res) => {
+    const dirs = {
+      pcap: path.join(REC_ROOT, 'pcaps'),
+      flac: path.join(REC_ROOT, 'flac'),
+      cache: path.join(REC_ROOT, 'cache'),
+      tmp: path.join(REC_ROOT, 'tmp'),
+    };
+    const [pcap, flac, cache, tmp] = await Promise.all([
+      dirStats(dirs.pcap), dirStats(dirs.flac), dirStats(dirs.cache), dirStats(dirs.tmp),
+    ]);
+
+    const disk = { totalBytes: null, freeBytes: null, usedPercent: null };
+    try {
+      const st = await fs.promises.statfs(REC_ROOT);
+      const total = Number(st.blocks) * Number(st.bsize);
+      const free = Number(st.bavail) * Number(st.bsize);
+      if (total > 0) {
+        disk.totalBytes = total;
+        disk.freeBytes = free;
+        disk.usedPercent = Math.round((1 - free / total) * 1000) / 10;
+      }
+    } catch { /* statfs 不可用时保持 null */ }
+
+    const lowSpace = disk.freeBytes != null && disk.totalBytes
+      ? (disk.freeBytes / disk.totalBytes) < 0.10
+      : null;
+
+    ok(res, {
+      pcapBytes: pcap.bytes, pcapFiles: pcap.files,
+      flacBytes: flac.bytes, flacFiles: flac.files,
+      cacheBytes: cache.bytes, cacheFiles: cache.files,
+      tmpBytes: tmp.bytes, tmpFiles: tmp.files,
+      totalRecordingBytes: pcap.bytes + flac.bytes + cache.bytes + tmp.bytes,
+      disk: {
+        totalBytes: disk.totalBytes,
+        freeBytes: disk.freeBytes,
+        usedPercent: disk.usedPercent,
+        lowSpace,               // 可用空间 < 10% 时为 true
+        lowSpaceThresholdPercent: 10,
+      },
+      recordingRoot: REC_ROOT,
+      checkedAt: new Date().toISOString(),
+    });
   }));
 
   // ---------- 汇总统计 ----------
