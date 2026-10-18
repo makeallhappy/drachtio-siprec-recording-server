@@ -64,3 +64,5 @@ test/tmp/recordings/**
 test/tmp/rtpengine/pcaps/**
 test/tmp/rtpengine/metadata/**
 test/tmp/rtpengine/tmp/**
+recordings/
+sipp-logs/
