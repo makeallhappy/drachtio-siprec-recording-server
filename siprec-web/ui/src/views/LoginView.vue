@@ -86,7 +86,7 @@ async function onLogin() {
 <style scoped>
 .login-page { height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
 .login-card { width: 400px; }
-.login-title { text-align: center; font-size: 18px; font-weight: 600; color: #333; margin-bottom: 24px; }
+.login-title { text-align: center; font-size: 18px; font-weight: 600; color: #79bbff; margin-bottom: 24px; }
 .btn { width: 100%; }
 .captcha-row { display: flex; gap: 8px; width: 100%; }
 .captcha-row .el-input { flex: 1; }
