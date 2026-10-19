@@ -289,8 +289,8 @@ onBeforeUnmount(() => {
 .chart-card { border-radius: 10px; }
 .chart-head { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600; color: #303133; }
 .chart-sub { font-size: 12px; color: #909399; font-weight: 400; }
-.chart { height: 240px; width: 100%; }
-.chart-disk { height: 240px; }
+.chart { height: 150px; width: 100%; }
+.chart-disk { height: 150px; }
 .foot { font-size: 12px; color: #909399; text-align: right; }
 .err { color: #f56c6c; }
 

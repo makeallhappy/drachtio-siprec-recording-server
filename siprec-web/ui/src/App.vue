@@ -59,7 +59,7 @@ function onLogout() {
 
 <style>
 * { box-sizing: border-box; }
-body { margin: 0; font-family: -apple-system, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f7fa; }
+body { margin: 0; font-family: "Microsoft YaHei", "Segoe UI", "PingFang SC", "Helvetica Neue", Arial, sans-serif; background: #f5f7fa; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 .layout { min-height: 100vh; }
 
 /* 左侧边栏 */
