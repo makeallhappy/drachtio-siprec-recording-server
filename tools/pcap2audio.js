@@ -33,6 +33,27 @@ function alawDecode(buf) {
   return out;
 }
 
+// ---------- G.711 μ-law 解码(PT=0) ----------
+const ULAW_TABLE = (() => {
+  const t = new Int16Array(256);
+  for (let u = 0; u < 256; u++) {
+    const v = u ^ 0xff;
+    let pcm = 0;
+    if ((v & 0x80) !== 0) pcm = (v & 0x0f) << 3 | 0x84;
+    else pcm = (v & 0x0f) << 3 | 0x04;
+    const exp = (v >> 4) & 0x07;
+    pcm = exp === 0 ? pcm : pcm << exp;
+    t[u] = (v & 0x80) ? pcm : -pcm;
+  }
+  return t;
+})();
+
+function ulawDecode(buf) {
+  const out = new Int16Array(buf.length);
+  for (let i = 0; i < buf.length; i++) out[i] = ULAW_TABLE[buf[i]];
+  return out;
+}
+
 // ---------- pcap / RTP 解析 ----------
 function parsePcapRtp(file) {
   const buf = fs.readFileSync(file);
@@ -61,9 +82,10 @@ function parsePcapRtp(file) {
     // UDP
     const rtp = ip.subarray(ihl + 8);
     if (rtp.length < 12) continue;
-    // RTP: v2, PT=8 (PCMA)
+    // RTP: v2, PT=0 (PCMU) 或 PT=8 (PCMA)
     if ((rtp[0] >> 6) !== 2) continue;
-    if ((rtp[1] & 0x7f) !== 8) continue;
+    const pt = rtp[1] & 0x7f;
+    if (pt !== 0 && pt !== 8) continue;
     let hdr = 12 + (rtp[0] & 0x0f) * 4;
     if (rtp[0] & 0x10) { // header extension
       if (rtp.length < hdr + 4) continue;
@@ -73,19 +95,22 @@ function parsePcapRtp(file) {
     const seq = rtp.readUInt16BE(2);
     const ssrc = rtp.readUInt32BE(8);
     if (!legs.has(ssrc)) legs.set(ssrc, []);
-    legs.get(ssrc).push({ seq, payload: rtp.subarray(hdr) });
+    legs.get(ssrc).push({ seq, pt, payload: rtp.subarray(hdr) });
   }
   return legs;
 }
 
 // ---------- 合成 WAV ----------
 function writeWav(outPath, legs, mix) {
-  if (legs.size === 0) throw new Error('pcap 里没有 PCMA(PT=8)的 RTP 包');
+  if (legs.size === 0) throw new Error('pcap 里没有 G.711(PCMU PT=0 / PCMA PT=8)的 RTP 包');
   const decoded = [];
   for (const ssrc of [...legs.keys()].sort((a, b) => a - b)) {
     const pkts = legs.get(ssrc).sort((a, b) => a.seq - b.seq);
     const pcm = [];
-    for (const p of pkts) pcm.push(...alawDecode(p.payload));
+    for (const p of pkts) {
+      // PT=0 -> μ-law, PT=8 -> A-law
+      pcm.push(...(p.pt === 0 ? ulawDecode(p.payload) : alawDecode(p.payload)));
+    }
     decoded.push(pcm);
   }
   if (decoded.length === 1) decoded.push([]); // 单路时右路补静音
