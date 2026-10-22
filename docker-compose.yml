@@ -1,0 +1,84 @@
+# SIPREC 录音系统 - docker compose 编排
+# 管理 4 个核心容器: drachtio / rtpengine / siprec-server / siprec-web
+#   - 全部 host 网络(容器间经 127.0.0.1 直连,复用现有 oreka-mysql)
+#   - 密钥从 .env 引用(勿提交)
+# 用法:
+#   docker compose up -d        # 启动
+#   docker compose ps           # 状态
+#   docker compose logs -f siprec-server   # 日志
+#   docker compose down         # 停止(不删卷)
+
+services:
+  drachtio:
+    image: drachtio/drachtio-server:latest
+    container_name: drachtio
+    network_mode: host
+    restart: unless-stopped
+    command: drachtio --contact "sip:*;transport=udp" --loglevel info --port 9023
+
+  rtpengine:
+    image: rtpengine:2.0.0-debian13
+    container_name: rtpengine
+    network_mode: host
+    restart: unless-stopped
+    # rtpengine 抓包/管理网络需要这些权限,否则启动卡在 DTLS 证书生成后退出
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    volumes:
+      - ${RECORDING_ROOT}:/tmp
+    command:
+      - rtpengine
+      - --interface
+      - 127.0.0.1
+      - --listen-ng
+      - 127.0.0.1:22222
+      - --listen-http
+      - 0.0.0.0:9909
+      - --port-min
+      - "30000"
+      - --port-max
+      - "31000"
+      - --log-level
+      - "6"
+      - --recording-dir
+      - /tmp
+      - --recording-method
+      - pcap
+      - --foreground
+      - --log-stderr
+
+  siprec-server:
+    image: siprec-server:latest
+    container_name: siprec-server
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - NODE_CONFIG_ENV=production
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+
+  siprec-web:
+    image: siprec-web:latest
+    container_name: siprec-web
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ${RECORDING_ROOT}:/recordings
+      - ./siprec-web/api-config.json:/app/api-config.json:ro
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - USER_DB_NAME=${USER_DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - SSL_ENABLED=${SSL_ENABLED}
+      - SSL_P12_PATH=${SSL_P12_PATH}
+      - SSL_P12_PASSWORD=${SSL_P12_PASSWORD}
+      - WEB_HTTPS_PORT=${WEB_HTTPS_PORT}
+      - API_TOKEN=${API_TOKEN}

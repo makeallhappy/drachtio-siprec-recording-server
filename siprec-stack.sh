@@ -55,7 +55,7 @@ start() {
       "$RTPENGINE_IMG" \
       rtpengine --interface 127.0.0.1 --listen-ng 127.0.0.1:22222 \
         --listen-http 127.0.0.1:9909 \
-        --port-min 30000 --port-max 30100 --log-level 6
+        --port-min 30000 --port-max 31000 --log-level 6
   else
     log "rtpengine 已在运行"
   fi
