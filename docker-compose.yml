@@ -30,7 +30,7 @@ services:
     command:
       - rtpengine
       - --interface
-      - 127.0.0.1
+      - ${RTPENGINE_INTERFACE:-127.0.0.1}
       - --listen-ng
       - 127.0.0.1:22222
       - --listen-http
