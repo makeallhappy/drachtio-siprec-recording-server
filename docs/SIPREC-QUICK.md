@@ -96,7 +96,7 @@ GET  /stats/storage
 |---|---|---|
 | `~/drachtio-siprec-recording-server` | `Localized` | 主项目 |
 | `~/oreka` | `SpringOrkweb` | mysql+orkaudio |
-| `~/rtpengine` | `debian13-build` (c52eaac，**未推送**) | debian13 构建 |
+| `~/rtpengine` | `debian13-build` (c52eaac，已推送) | debian13 构建 |
 
 ## 当前状态（2026-10-25）
 
