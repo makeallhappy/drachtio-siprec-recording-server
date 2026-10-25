@@ -6,7 +6,7 @@
 
 | 容器 | 作用 | 端口 |
 |---|---|---|
-| drachtio | SIP 信令 | 5060/udp |
+| drachtio | SIP 信令 | **5070/udp** |
 | rtpengine | 媒体录音→pcap | 22222/udp, 30000-31000/udp |
 | siprec-server | 解析元数据+控 rtpengine+写库 | 22223 |
 | oreka-mysql | 元数据库 | 3306(127.0.0.1) |

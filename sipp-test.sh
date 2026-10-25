@@ -20,7 +20,7 @@ echo "=== 发 $CALLS 通 SIPREC 测试呼叫(带完整日志)==="
 docker run --rm --network host \
   -v "$PWD/test/scenarios:/tmp" \
   -v "$LOGDIR:/logs" \
-  drachtio/sipp:latest sipp 127.0.0.1:5060 -m "$CALLS" \
+  drachtio/sipp:latest sipp 127.0.0.1:${SIP_PORT:-5070} -m "$CALLS" \
   -sf /tmp/uac_siprec_pcap.xml \
   -trace_msg   -message_file /logs/sipp_messages.log \
   -trace_err   -error_file   /logs/sipp_errors.log \

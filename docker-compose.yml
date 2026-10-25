@@ -10,14 +10,14 @@
 
 services:
   drachtio:
-    image: drachtio/drachtio-server:latest
+    image: siprec/drachtio-server:202610-0.9.11
     container_name: drachtio
     network_mode: host
     restart: unless-stopped
-    command: drachtio --contact "sip:*;transport=udp" --loglevel info --port 9023
+    command: drachtio --contact "sip:0.0.0.0:5070;transport=udp" --loglevel info --port 9023
 
   rtpengine:
-    image: rtpengine:2.0.0-debian13
+    image: siprec/rtpengine:202610-27.0.0
     container_name: rtpengine
     network_mode: host
     restart: unless-stopped
@@ -49,7 +49,7 @@ services:
       - --log-stderr
 
   siprec-server:
-    image: siprec-server:latest
+    image: siprec/siprec-server:202610-2.0.0
     container_name: siprec-server
     network_mode: host
     restart: unless-stopped
@@ -62,7 +62,7 @@ services:
       - DB_NAME=${DB_NAME}
 
   siprec-web:
-    image: siprec-web:latest
+    image: siprec/siprec-web:202610-2.0.0
     container_name: siprec-web
     network_mode: host
     restart: unless-stopped

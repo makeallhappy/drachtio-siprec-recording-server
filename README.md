@@ -12,7 +12,7 @@
 
 | 容器 | 角色 | 关键端口 | 镜像 |
 |---|---|---|---|
-| **drachtio** | SIP 信令服务器 | 5060/udp(SIP), 9023(控制) | drachtio/drachtio-server |
+| **drachtio** | SIP 信令服务器 | 5070/udp(SIP), 9023(控制) | drachtio/drachtio-server |
 | **rtpengine** | 媒体录音引擎 | 22222/udp(NG 控制), 30000-30100/udp(RTP) | drachtio/rtpengine |
 | **siprec-server** | 录音服务器本体(Node) | 22223(本地 DTMF) | 本地构建 `siprec-server` |
 | **oreka-mysql** | 数据库 | 3306 | mysql:8.0 |
@@ -22,13 +22,13 @@
 
 ```
 ① SIP INVITE(SIPREC 客户端:PBX / sipp)
-   │  INVITE sip:X@<host>:5060
+   │  INVITE sip:X@<host>:5070
    │  Content-Type: multipart/mixed
    │  ├─ application/sdp        (caller 腿 + callee 腿 两路 SDP)
    │  └─ application/rs-metadata(录音会话元数据 XML)
    ▼
 ┌────────────────────────────────────────────┐
-│ drachtio (5060/udp)                        │  收 SIP 信令
+│ drachtio (5070/udp)                        │  收 SIP 信令
 └────────────────────────────────────────────┘
    │  控制面转发(9023)
    ▼
@@ -218,7 +218,7 @@ match=<IP HERE>
 
 [drachtio_out]
 type=aor
-contact=sip:<IP HERE>:5060
+contact=sip:<IP HERE>:5070
 ```
 2- Hairpin the incoming call back to the server. Add these setings to your 'extensions.conf" file:
 ```
