@@ -33,6 +33,35 @@
       </el-card>
     </div>
 
+    <!-- rtpengine 媒体面（数据来自 rtpengine /metrics） -->
+    <div class="stat-row">
+      <el-card class="stat-card media-card" shadow="hover">
+        <div class="stat-label">媒体会话 · rtpengine</div>
+        <div class="stat-value">
+          <span class="num">{{ rtp.ok ? (rtp.sessions?.own ?? 0) : '--' }}</span><span class="unit">路</span>
+        </div>
+        <div class="stat-sub">{{ rtpSub }}</div>
+      </el-card>
+
+      <el-card class="stat-card" shadow="hover">
+        <div class="stat-label">媒体端口占用</div>
+        <div class="stat-value"><span class="num">{{ rtp.ok ? rtp.ports?.used : '--' }}</span><span class="unit">个</span></div>
+        <div class="stat-sub">{{ portSub }}</div>
+      </el-card>
+
+      <el-card class="stat-card" shadow="hover">
+        <div class="stat-label">媒体包速率</div>
+        <div class="stat-value"><span class="num">{{ rtp.rates?.pps ?? '--' }}</span><span class="unit">pps</span></div>
+        <div class="stat-sub">{{ rateSub }}</div>
+      </el-card>
+
+      <el-card class="stat-card" shadow="hover">
+        <div class="stat-label">媒体异常</div>
+        <div class="stat-value"><span class="num">{{ rtp.ok ? (rtp.errors ?? 0) : '--' }}</span><span class="unit">次</span></div>
+        <div class="stat-sub">{{ qualitySub }}</div>
+      </el-card>
+    </div>
+
     <!-- 图表区 -->
     <div class="chart-row">
       <el-card class="chart-card" shadow="never">
@@ -74,7 +103,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts'
 import api from '@/api'
 
@@ -85,6 +114,31 @@ const activeRecordings = ref(0)
 const cpu = ref({ usagePercent: null, cores: null, load1: null })
 const memory = ref({ usedPercent: null, usedBytes: null, totalBytes: null })
 const disk = ref({ usedPercent: null, freeBytes: null, totalBytes: null })
+const rtp = ref({ ok: false, rates: {}, sessions: {}, ports: {}, quality: {} })
+
+const rtpSub = computed(() => {
+  if (!rtp.value.ok) return 'rtpengine 未连接（9909 不可达）'
+  const s = rtp.value.sessions || {}
+  return `用户态流 ${s.streamsUserspace ?? 0} · 外来 ${s.foreign ?? 0} · 累计 ${s.total ?? 0} 通`
+})
+
+const portSub = computed(() => {
+  if (!rtp.value.ok) return '—'
+  const p = rtp.value.ports || {}
+  return `空闲 ${p.free ?? 0} / 共 ${p.total ?? 0}`
+})
+
+const rateSub = computed(() => {
+  if (!rtp.value.ok) return '—'
+  const r = rtp.value.rates || {}
+  return `媒体验码率 ${fmtBitrate(r.bps)}`
+})
+
+const qualitySub = computed(() => {
+  if (!rtp.value.ok) return '—'
+  const q = rtp.value.quality || {}
+  return `丢包 ${q.packetLoss ?? 0} · 乱序 ${q.reordered ?? 0} · 单向 ${q.oneWaySessions ?? 0}`
+})
 const lastUpdate = ref('')
 const error = ref('')
 
@@ -111,6 +165,13 @@ function fmtBytes(b) {
   let v = Number(b)
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
   return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`
+}
+
+function fmtBitrate(bps) {
+  if (bps == null) return '—'
+  if (bps < 1000) return `${bps} bps`
+  if (bps < 1e6) return `${(bps / 1000).toFixed(1)} Kbps`
+  return `${(bps / 1e6).toFixed(2)} Mbps`
 }
 
 function nowLabel() {
@@ -219,6 +280,7 @@ async function poll() {
     cpu.value = data.cpu
     memory.value = data.memory
     disk.value = data.disk
+    rtp.value = data.rtpengine || { ok: false, rates: {}, sessions: {}, ports: {}, quality: {} }
     lastUpdate.value = new Date(data.ts).toLocaleTimeString()
     error.value = ''
 

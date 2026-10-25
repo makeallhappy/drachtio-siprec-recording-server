@@ -9,10 +9,10 @@
 siprec/drachtio-server:202610-0.9.11   sha256:9b77591c443774a7063ac43a36dc77fac75052d824f9687809b94d071ed266d7  drachtio v0.9.11-6-g9e85a13fd2
 siprec/rtpengine:202610-27.0.0         6afbf13b3418  rtpengine mr27.0.0.0 (2.0.0-debian13)
 siprec/siprec-server:202610-2.0.0      5384daa973d9  node 18.16.0, git 650fb9f
-siprec/siprec-web:202610-2.0.0         bf444d0e5566  node 24.22.0 + ffmpeg 8.1.2, git 650fb9f
+siprec/siprec-web:202610-2.0.1         6c411ebd40af  node 24.22.0 + ffmpeg 8.1.2, 含 rtpengine 媒体指标
 
 # 重建命令（在仓库根目录执行）
 #   docker tag drachtio/drachtio-server:latest siprec/drachtio-server:202610-0.9.11
 #   docker tag rtpengine:2.0.0-debian13          siprec/rtpengine:202610-27.0.0
 #   docker tag siprec-server:latest              siprec/siprec-server:202610-2.0.0
-#   docker tag siprec-web:latest                 siprec/siprec-web:202610-2.0.0
+#   docker tag siprec-web:latest                 siprec/siprec-web:202610-2.0.1

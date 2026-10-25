@@ -34,7 +34,7 @@ services:
       - --listen-ng
       - 127.0.0.1:22222
       - --listen-http
-      - 0.0.0.0:9909
+      - 127.0.0.1:9909
       - --port-min
       - "30000"
       - --port-max
@@ -62,7 +62,7 @@ services:
       - DB_NAME=${DB_NAME}
 
   siprec-web:
-    image: siprec/siprec-web:202610-2.0.0
+    image: siprec/siprec-web:202610-2.0.1
     container_name: siprec-web
     network_mode: host
     restart: unless-stopped
