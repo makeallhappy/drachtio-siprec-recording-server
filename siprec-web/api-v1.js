@@ -15,6 +15,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const audio = require('./audio');
+const metrics = require('./metrics');
 
 /**
  * 静态鉴权 Token 解析顺序:
@@ -314,6 +315,18 @@ function createApiV1(deps) {
   }));
 
   // ---------- 存储统计 ----------
+  // ---------- 实时统计:媒体面(rtpengine) ----------
+  // GET /api/v1/stats/media
+  // 数据源:siprec-web 内部访问 rtpengine 的 Prometheus /metrics(仅回环)
+  // 注:rates.pps/bps 为两次调用之间的差分,调用频率决定精度(首次为 null)
+  r.get('/stats/media', wrap(async (_req, res) => {
+    const media = await metrics.rtpengineStats();
+    if (!media.ok) {
+      return fail(res, 503, 50310, `rtpengine metrics unavailable: ${media.error}`);
+    }
+    ok(res, media);
+  }));
+
   // GET /api/v1/stats/storage
   // 返回各录音目录占用 + 底层文件系统容量(宿主机磁盘) + 低空间标记
   r.get('/stats/storage', wrap(async (_req, res) => {

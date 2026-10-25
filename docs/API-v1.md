@@ -31,6 +31,7 @@ Token 配置在 `siprec-web/api-config.json`:
 | 401 | 40100 | token 缺失或错误 |
 | 400 | 40001 | recordingId 格式错误 |
 | 404 | 40401 | 录音不存在 / 无音频文件 |
+| 503 | 50310 | rtpengine 指标暂不可用(`/stats/media`) |
 | 500 | 50000 | 服务端错误 |
 
 ## 1. 查询录音列表
@@ -369,4 +370,62 @@ GET /stats/storage
 
 > 实现说明:容器通过 bind mount 看到的是同一份文件系统,因此 `du`(目录占用)与 `statfs`(磁盘容量)都反映宿主机真实数据。
 > 轮询建议 ≥ 60 秒(目录递归统计有 I/O 开销,文件量大时尤甚)。
+
+## 11. 实时媒体指标(rtpengine)
+
+```
+GET /stats/media
+```
+
+返回媒体面(rtpengine)的会话、端口、包量、质量指标。数据源是 rtpengine 的 Prometheus `/metrics`(只绑 `127.0.0.1:9909`),由 siprec-web 在服务端转成 JSON——**9909 不对外开放,第三方只需访问本 API**。
+
+```json
+{
+  "code": 0, "message": "ok",
+  "data": {
+    "ok": true,
+    "ts": 1792944525958,
+    "uptimeSeconds": 1710,
+    "sessions": {
+      "own": 1, "foreign": 0, "total": 42,
+      "streamsUserspace": 2, "streamsKernel": 0, "streamsMixed": 0
+    },
+    "ports": {
+      "used": 4, "free": 9997, "total": 10001,
+      "interfaces": [{ "name": "default", "address": "127.0.0.1", "used": 4, "free": 9997, "total": 10001 }]
+    },
+    "packets": { "userspace": 101, "kernel": 0, "total": 101 },
+    "bytes":   { "userspace": 25452, "kernel": 0, "total": 25452 },
+    "errors": 0,
+    "quality": {
+      "packetLoss": 0, "duplicates": 0, "skips": 0, "reordered": 0,
+      "oneWaySessions": 0, "zeroPacketStreams": 0
+    },
+    "mos": { "samples": 0, "avg": null },
+    "callDurationAvg": 3.01,
+    "rates": { "pps": 33.6, "bps": 8479 },
+    "requests": { "offer": 42, "answer": 42, "delete": 41 }
+  }
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `sessions.own` | 当前本实例持有的会话数(实时在录的媒体会话) |
+| `sessions.total` | 启动以来累计管理会话数 |
+| `streamsUserspace/Kernel/Mixed` | 媒体流所在转发路径:用户态 / 内核态 / 混合 |
+| `ports.used/free/total` | RTP 端口池占用情况(当前池 30000-40000,共 10001) |
+| `packets/bytes` | 累计转发的包数/字节数 |
+| `errors` | 转发出错累计次数 |
+| `quality.packetLoss` | 丢包累计;`duplicates/skips/reordered` 对应 RTP 重复/跳变/乱序 |
+| `quality.oneWaySessions` | 单向流(只有一边有包)累计——排查"单通"的关键指标 |
+| `mos.samples/avg` | MOS 采样数与均值(无 RTCP 时为 0/null) |
+| `callDurationAvg` | 平均通话时长(秒) |
+| `rates.pps/bps` | **两次调用之间的**包速率与码率;首次调用为 `null`,轮询间隔决定精度 |
+| `requests` | offer/answer/delete 控制命令累计次数 |
+
+**降级行为**:rtpengine 不可达时返回 HTTP 503 + `code=50310`,`message` 含原因;调用方应把它当作"指标暂不可用",而不是录音中断(录音与事件通道均不受影响)。
+
+> 轮询建议 5–15 秒。`rates` 依赖差分,轮询间隔过长会让瞬时速率变成平均值。
+> 需要告警时优先看 `quality.oneWaySessions` 增量与 `ports.free` 是否趋零。
 
