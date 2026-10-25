@@ -13,7 +13,7 @@
 | 容器 | 角色 | 关键端口 | 镜像 |
 |---|---|---|---|
 | **drachtio** | SIP 信令服务器 | 5070/udp(SIP), 9023(控制) | drachtio/drachtio-server |
-| **rtpengine** | 媒体录音引擎 | 22222/udp(NG 控制), 30000-30100/udp(RTP) | drachtio/rtpengine |
+| **rtpengine** | 媒体录音引擎 | 22222/udp(NG 控制), 30000-40000/udp(RTP) | drachtio/rtpengine |
 | **siprec-server** | 录音服务器本体(Node) | 22223(本地 DTMF) | 本地构建 `siprec-server` |
 | **oreka-mysql** | 数据库 | 3306 | mysql:8.0 |
 | **siprec-web** | 查询 WEB(Node + Vue3) | 8444(HTTPS) | 本地构建 `siprec-web` |
@@ -54,7 +54,7 @@
    ▼
 ┌────────────────────────────────────────────┐
 │ rtpengine (22222/udp 控制)                 │
-│  • 接管两路 RTP 媒体流(30000-30100/udp)   │
+│  • 接管两路 RTP 媒体流(30000-40000/udp)   │
 │  • ④ 边转发边录音 → pcap 落盘:             │
 │    recordings/pcaps/<callid>-<rand>.pcap   │
 │    (@ 编码为 %40;recording-method=pcap)    │

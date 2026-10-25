@@ -5,15 +5,15 @@
 # 设计说明:
 #   - 宿主机网络(--network host):录音对 NAT 敏感,与测试环境行为一致
 #   - drachtio 控制面映射到宿主机 9023(容器内 9022),SIP 监听 5060/udp
-#   - rtpengine 控制面 22222/udp,媒体端口 30000-30100/udp
+#   - rtpengine 控制面 22222/udp,媒体端口 30000-40000/udp
 #   - siprec 录音服务器连接 127.0.0.1:9023(drachtio) 和 127.0.0.1:22222(rtpengine)
 #   - 元数据落库连 127.0.0.1:3306 的 oreka-mysql(siprec 库)
 set -euo pipefail
 cd "$(dirname "$0")"
 
-DRACHTIO_IMG="drachtio/drachtio-server:latest"
-RTPENGINE_IMG="drachtio/rtpengine:latest"
-SIPREC_IMG="siprec-server:latest"
+DRACHTIO_IMG="siprec/drachtio-server:202610-0.9.11"
+RTPENGINE_IMG="siprec/rtpengine:202610-27.0.0"
+SIPREC_IMG="siprec/siprec-server:202610-2.0.0"
 
 RTP_WORKDIR="$PWD/recordings"   # rtpengine 录音文件输出目录
 mkdir -p "$RTP_WORKDIR"
@@ -45,7 +45,7 @@ start() {
     log "drachtio 已在运行"
   fi
 
-  # 2) rtpengine:录音媒体。控制面 22222/udp,媒体 30000-30100/udp
+  # 2) rtpengine:录音媒体。控制面 22222/udp,媒体 30000-40000/udp
   if ! docker ps --format '{{.Names}}' | grep -qx rtpengine; then
     docker rm -f rtpengine >/dev/null 2>&1 || true
     log "启动 rtpengine ..."
@@ -55,7 +55,7 @@ start() {
       "$RTPENGINE_IMG" \
       rtpengine --interface 127.0.0.1 --listen-ng 127.0.0.1:22222 \
         --listen-http 127.0.0.1:9909 \
-        --port-min 30000 --port-max 31000 --log-level 6
+        --port-min 30000 --port-max 40000 --log-level 6
   else
     log "rtpengine 已在运行"
   fi
