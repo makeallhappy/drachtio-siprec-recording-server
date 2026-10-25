@@ -62,6 +62,25 @@
       </el-card>
     </div>
 
+    <!-- 实时通话事件（SSE，来自 siprec-server） -->
+    <el-card class="chart-card events-card" shadow="never">
+      <template #header>
+        <div class="chart-head">
+          <span>实时通话事件</span>
+          <span class="chart-sub" :class="{ 'sse-down': sseState !== '已连接' }">{{ sseState }}</span>
+        </div>
+      </template>
+      <div class="event-list">
+        <div v-if="!events.length" class="event-empty">等待事件…（建立录音会话时实时出现）</div>
+        <div v-for="e in events" :key="e.id" class="event-row">
+          <span class="event-time">{{ fmtTime(e.ts) }}</span>
+          <span class="event-badge" :class="e.type">{{ eventLabel(e.type) }}</span>
+          <span class="event-main">{{ eventMain(e) }}</span>
+          <span class="event-dur">{{ e.type === 'call_end' ? fmtDuration(e.durationMs) : '' }}</span>
+        </div>
+      </div>
+    </el-card>
+
     <!-- 图表区 -->
     <div class="chart-row">
       <el-card class="chart-card" shadow="never">
@@ -94,25 +113,6 @@
         <div ref="activeEl" class="chart"></div>
       </el-card>
     </div>
-
-    <!-- 实时通话事件（SSE，来自 siprec-server） -->
-    <el-card class="chart-card events-card" shadow="never">
-      <template #header>
-        <div class="chart-head">
-          <span>实时通话事件</span>
-          <span class="chart-sub" :class="{ 'sse-down': sseState !== '已连接' }">{{ sseState }}</span>
-        </div>
-      </template>
-      <div class="event-list">
-        <div v-if="!events.length" class="event-empty">等待事件…（建立录音会话时实时出现）</div>
-        <div v-for="e in events" :key="e.id" class="event-row">
-          <span class="event-time">{{ fmtTime(e.ts) }}</span>
-          <span class="event-badge" :class="e.type">{{ eventLabel(e.type) }}</span>
-          <span class="event-main">{{ eventMain(e) }}</span>
-          <span class="event-dur">{{ e.type === 'call_end' ? fmtDuration(e.durationMs) : '' }}</span>
-        </div>
-      </div>
-    </el-card>
 
     <div class="foot">
       每 3 秒刷新 · 最后更新 {{ lastUpdate || '—' }}
