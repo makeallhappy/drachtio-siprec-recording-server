@@ -17,5 +17,9 @@
     "user": "root",
     "password": "oreka123",
     "database": "siprec"
+  },
+  "events": {
+    "host": "127.0.0.1",
+    "port": 22224
   }
 }

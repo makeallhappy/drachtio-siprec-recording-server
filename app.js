@@ -31,6 +31,9 @@ if (config.has('rtpengine')) {
   callHandler = require('./lib/rtpengine-call-handler');
   // start DTMF listener
   require('./lib/dtmf-event-handler')(logger);
+  // 通话事件 SSE 端点(只绑回环,供 siprec-web 代理给看板)
+  const events = require('./lib/events');
+  events.start(logger, config.has('events') ? config.get('events') : {});
   // 启动活跃会话心跳(每 10 秒刷新 last_heartbeat,供实时统计)
   require('./lib/metadata-store').startHeartbeat();
 
@@ -39,6 +42,7 @@ if (config.has('rtpengine')) {
     const ctype = req.get('Content-Type') || '';
     if (!ctype.includes('multipart/mixed')) {
       logger.info(`rejecting non-SIPREC INVITE with call-id ${req.get('Call-ID')}`);
+      events.publish('call_rejected', { callId: req.get('Call-ID'), reason: 'non-siprec' });
       return res.send(488);
     }
     next();

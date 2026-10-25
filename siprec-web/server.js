@@ -255,6 +255,38 @@ app.get('/api/system/metrics', auth.requireAuth, async (_req, res) => {
   }
 });
 
+// ==================== 看板:实时通话事件(SSE 代理) ====================
+// 源头是 siprec-server 的事件端点(只绑回环),这里带 JWT 中转给前端。
+// EventSource 无法带 Authorization 头,所以前端用 fetch + ReadableStream 消费。
+app.get('/api/events', auth.requireAuth, (req, res) => {
+  const upstreamUrl = process.env.EVENTS_URL || 'http://127.0.0.1:22224/events';
+
+  const proxyReq = http.get(upstreamUrl, { headers: { Accept: 'text/event-stream' }, timeout: 5000 }, (up) => {
+    if (up.statusCode !== 200) {
+      up.resume();
+      res.status(503).json({ error: `events upstream HTTP ${up.statusCode}` });
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    // 客户端断开时释放上游连接,避免监听器泄漏
+    req.on('close', () => up.destroy());
+    up.on('error', () => res.end());
+    up.pipe(res);
+  });
+
+  proxyReq.on('timeout', () => proxyReq.destroy(new Error('upstream timeout')));
+  proxyReq.on('error', (err) => {
+    if (!res.headersSent) res.status(503).json({ error: `events upstream unavailable: ${err.message}` });
+    else res.end();
+  });
+  req.on('close', () => proxyReq.destroy());
+});
+
 // ==================== 对外 API v1(静态 Token,第三方对接) ====================
 app.use('/api/v1', createApiV1({ pool, listTables, getCallId }));
 

@@ -95,6 +95,25 @@
       </el-card>
     </div>
 
+    <!-- 实时通话事件（SSE，来自 siprec-server） -->
+    <el-card class="chart-card events-card" shadow="never">
+      <template #header>
+        <div class="chart-head">
+          <span>实时通话事件</span>
+          <span class="chart-sub" :class="{ 'sse-down': sseState !== '已连接' }">{{ sseState }}</span>
+        </div>
+      </template>
+      <div class="event-list">
+        <div v-if="!events.length" class="event-empty">等待事件…（建立录音会话时实时出现）</div>
+        <div v-for="e in events" :key="e.id" class="event-row">
+          <span class="event-time">{{ fmtTime(e.ts) }}</span>
+          <span class="event-badge" :class="e.type">{{ eventLabel(e.type) }}</span>
+          <span class="event-main">{{ eventMain(e) }}</span>
+          <span class="event-dur">{{ e.type === 'call_end' ? fmtDuration(e.durationMs) : '' }}</span>
+        </div>
+      </div>
+    </el-card>
+
     <div class="foot">
       每 3 秒刷新 · 最后更新 {{ lastUpdate || '—' }}
       <span v-if="error" class="err">· {{ error }}</span>
@@ -106,6 +125,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts'
 import api from '@/api'
+import { auth } from '@/auth'
 
 const MAX_POINTS = 60
 const POLL_MS = 3000
@@ -141,6 +161,93 @@ const qualitySub = computed(() => {
 })
 const lastUpdate = ref('')
 const error = ref('')
+
+// SSE:实时通话事件
+const events = ref([])
+const sseState = ref('未连接')
+let sseAbort = null
+let sseTimer = null
+let refreshTimer = null
+
+function fmtTime(ts) {
+  const d = new Date(ts)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+function fmtDuration(ms) {
+  if (ms == null) return ''
+  const s = Math.round(ms / 1000)
+  return s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`
+}
+
+function numOf(aor) {
+  if (!aor) return '?'
+  return String(aor).replace(/^sips?:/i, '').split('@')[0] || aor
+}
+
+function eventLabel(type) {
+  return { call_start: '开始', call_end: '结束', call_rejected: '拒绝' }[type] || type
+}
+
+function eventMain(e) {
+  if (e.type === 'call_start') return `${numOf(e.callerAor)} → ${numOf(e.calleeAor)}`
+  if (e.type === 'call_end') return `${numOf(e.callerAor)} → ${numOf(e.calleeAor)}`
+  if (e.type === 'call_rejected') return `非 SIPREC 呼叫 ${e.callId || ''}`
+  return e.callId || ''
+}
+
+function scheduleRefresh() {
+  clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(poll, 250)
+}
+
+/** 用 fetch 读 SSE 流（EventSource 无法带 Authorization 头） */
+function connectEvents() {
+  sseAbort = new AbortController()
+  sseState.value = '连接中…'
+
+  fetch('/api/events', {
+    headers: { Authorization: `Bearer ${auth.accessToken}` },
+    signal: sseAbort.signal,
+  })
+    .then((resp) => {
+      if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
+      sseState.value = '已连接'
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+
+      const pump = () => reader.read().then(({ value, done }) => {
+        if (done) throw new Error('stream closed')
+        buf += decoder.decode(value, { stream: true })
+        let idx
+        while ((idx = buf.indexOf('\n\n')) >= 0) {
+          const chunk = buf.slice(0, idx)
+          buf = buf.slice(idx + 2)
+          const dataLines = []
+          for (const line of chunk.split('\n')) {
+            if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+          }
+          if (!dataLines.length) continue
+          try {
+            const ev = JSON.parse(dataLines.join('\n'))
+            events.value.unshift(ev)
+            if (events.value.length > 8) events.value.pop()
+            if (ev.type === 'call_start' || ev.type === 'call_end') scheduleRefresh()
+          } catch (_) { /* 忽略不完整分片 */ }
+        }
+        return pump()
+      })
+
+      return pump()
+    })
+    .catch(() => {
+      if (sseAbort && sseAbort.signal.aborted) return
+      sseState.value = '断开，3 秒重连'
+      sseTimer = setTimeout(connectEvents, 3000)
+    })
+}
 
 const cpuEl = ref(null)
 const memEl = ref(null)
@@ -318,12 +425,16 @@ onMounted(() => {
   diskChart.setOption(diskOption())
 
   poll()
+  connectEvents()
   timer = setInterval(poll, POLL_MS)
   window.addEventListener('resize', resizeAll)
 })
 
 onBeforeUnmount(() => {
   clearInterval(timer)
+  clearTimeout(sseTimer)
+  clearTimeout(refreshTimer)
+  sseAbort?.abort()
   window.removeEventListener('resize', resizeAll)
   cpuChart?.dispose(); memChart?.dispose(); diskChart?.dispose(); activeChart?.dispose()
 })
@@ -355,6 +466,19 @@ onBeforeUnmount(() => {
 .chart-disk { height: 150px; }
 .foot { font-size: 12px; color: #909399; text-align: right; }
 .err { color: #f56c6c; }
+
+.events-card { border-radius: 10px; }
+.event-list { max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.event-empty { font-size: 12px; color: #909399; padding: 6px 0; }
+.event-row { display: flex; align-items: center; gap: 10px; font-size: 12px; padding: 4px 6px; border-radius: 6px; background: #fafafa; }
+.event-time { color: #909399; font-variant-numeric: tabular-nums; }
+.event-badge { flex: 0 0 auto; padding: 1px 7px; border-radius: 10px; font-size: 11px; color: #fff; background: #909399; }
+.event-badge.call_start { background: #67c23a; }
+.event-badge.call_end { background: #409eff; }
+.event-badge.call_rejected { background: #f56c6c; }
+.event-main { flex: 1 1 auto; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-dur { color: #909399; font-variant-numeric: tabular-nums; }
+.sse-down { color: #e6a23c; }
 
 @media (max-width: 1100px) {
   .stat-row { grid-template-columns: repeat(2, 1fr); }
