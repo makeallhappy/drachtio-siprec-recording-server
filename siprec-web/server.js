@@ -275,13 +275,24 @@ app.get('/api/system/metrics', auth.requireAuth, async (_req, res) => {
     const [rows] = await pool.query(
       `SELECT COUNT(*) AS active FROM active_sessions
         WHERE last_heartbeat >= NOW(3) - INTERVAL 30 SECOND`);
-    const [longRows] = await pool.query(
-      `SELECT session_key, call_id, caller_number, callee_number,
-              TIMESTAMPDIFF(SECOND, start_time, NOW(3)) AS elapsed_sec
+    // 注意：start_time 是 UTC（JS 写入），而 MySQL 服务器时区可能是 +08:00，
+    // 用 SQL 的 NOW() 做减法会整体偏 8 小时。这里取回后在本进程计算。
+    const [activeRows] = await pool.query(
+      `SELECT session_key, call_id, caller_number, callee_number, start_time
          FROM active_sessions
-        WHERE last_heartbeat >= NOW(3) - INTERVAL 30 SECOND
-          AND TIMESTAMPDIFF(SECOND, start_time, NOW(3)) >= ?
-        ORDER BY start_time`, [LONG_CALL_WARN_SECONDS]);
+        WHERE last_heartbeat >= NOW(3) - INTERVAL 30 SECOND`);
+    const nowMs = Date.now();
+    const longRows = activeRows
+      .map((r) => ({
+        session_key: r.session_key,
+        call_id: r.call_id,
+        caller_number: r.caller_number,
+        callee_number: r.callee_number,
+        start_time: r.start_time,
+        elapsed_sec: Math.max(0, Math.floor((nowMs - new Date(r.start_time).getTime()) / 1000)),
+      }))
+      .filter((r) => r.elapsed_sec >= LONG_CALL_WARN_SECONDS)
+      .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
     res.json({
       ts: Date.now(),
       activeRecordings: rows[0].active,

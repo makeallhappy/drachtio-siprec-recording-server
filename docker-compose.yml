@@ -69,7 +69,7 @@ services:
       - EVENTS_PORT=${EVENTS_PORT:-22224}
 
   siprec-web:
-    image: siprec/siprec-web:202610-2.0.8
+    image: siprec/siprec-web:202610-2.0.9
     container_name: siprec-web
     network_mode: host
     restart: unless-stopped
