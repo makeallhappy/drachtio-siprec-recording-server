@@ -62,7 +62,7 @@ services:
       - DB_NAME=${DB_NAME}
 
   siprec-web:
-    image: siprec/siprec-web:202610-2.0.6
+    image: siprec/siprec-web:202610-2.0.7
     container_name: siprec-web
     network_mode: host
     restart: unless-stopped

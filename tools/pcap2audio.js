@@ -55,12 +55,69 @@ function ulawDecode(buf) {
 }
 
 // ---------- pcap / RTP 解析 ----------
+// 注意：rtpengine 的 pcap 默认写 LINKTYPE_RAW(101)，即每个包直接从 IPv4 头开始，
+// 没有 Ethernet 头。旧实现固定从 14 字节 Ethernet 头解析，导致所有包被丢弃、
+// 报 “pcap 里没有 G.711 的 RTP 包”，播放接口 500。这里按 pcap 全局头的 linktype 分派。
+function ipOffsetForLinktype(pkt, linktype) {
+  switch (linktype) {
+    case 101: // LINKTYPE_RAW：直接 IPv4/IPv6
+    case 12:  // LINKTYPE_RAW_ALT
+      return 0;
+    case 113: // Linux SLL
+      return 16;
+    case 276: // Linux SLL2
+      return 20;
+    case 0:   // BSD loopback
+      return 4;
+    case 1: { // Ethernet(含 802.1Q/802.1ad)
+      if (pkt.length < 14) return -1;
+      let off = 14;
+      let etype = pkt.readUInt16BE(12);
+      while (etype === 0x8100 || etype === 0x88a8) {
+        if (pkt.length < off + 4) return -1;
+        etype = pkt.readUInt16BE(off + 2);
+        off += 4;
+      }
+      return etype === 0x0800 ? off : -1;
+    }
+    default:
+      return -1;
+  }
+}
+
+/** 从帧里取出 RTP 负载；无法识别时返回 null */
+function rtpFromFrame(pkt, linktype) {
+  let off = ipOffsetForLinktype(pkt, linktype);
+  // 未知 linktype 时容错尝试常见偏移（raw IP / Ethernet）
+  if (off < 0 && linktype !== 1) {
+    for (const cand of [0, 14, 16, 20]) {
+      if (pkt.length > cand && (pkt[cand] >> 4) === 4) { off = cand; break; }
+    }
+  }
+  if (off < 0 || pkt.length < off + 20) return null;
+
+  const ip = pkt.subarray(off);
+  const ver = ip[0] >> 4;
+  if (ver === 4) {
+    const ihl = (ip[0] & 0x0f) * 4;
+    if (ip[9] !== 17 || ip.length < ihl + 8) return null;
+    return ip.subarray(ihl + 8);
+  }
+  if (ver === 6) {
+    // 仅处理无扩展头的 UDP
+    if (ip[6] !== 17 || ip.length < 48) return null;
+    return ip.subarray(48);
+  }
+  return null;
+}
+
 function parsePcapRtp(file) {
   const buf = fs.readFileSync(file);
   if (buf.length < 24) return new Map();
   const magic = buf.readUInt32BE(0);
   const be = magic === 0xa1b2c3d4;
   if (!be && magic !== 0xd4c3b2a1) throw new Error(`${file}: 不是标准 pcap 文件`);
+  const linktype = be ? buf.readUInt32BE(20) : buf.readUInt32LE(20);
 
   const legs = new Map(); // ssrc -> [{seq, payload}]
   let off = 24;
@@ -69,19 +126,10 @@ function parsePcapRtp(file) {
     off += 16;
     const pkt = buf.subarray(off, off + incl);
     off += incl;
-    if (pkt.length < 14) continue;
-    // Ethernet(含 802.1Q)
-    let ethOff = 14;
-    let etype = pkt.readUInt16BE(12);
-    if (etype === 0x8100 && pkt.length >= 18) { etype = pkt.readUInt16BE(16); ethOff = 18; }
-    if (etype !== 0x0800 || pkt.length < ethOff + 20) continue;
-    // IPv4
-    const ip = pkt.subarray(ethOff);
-    const ihl = (ip[0] & 0x0f) * 4;
-    if (ip[9] !== 17 || ip.length < ihl + 8) continue;
-    // UDP
-    const rtp = ip.subarray(ihl + 8);
-    if (rtp.length < 12) continue;
+    if (pkt.length < 12) continue;
+
+    const rtp = rtpFromFrame(pkt, linktype);
+    if (!rtp || rtp.length < 12) continue;
     // RTP: v2, PT=0 (PCMU) 或 PT=8 (PCMA)
     if ((rtp[0] >> 6) !== 2) continue;
     const pt = rtp[1] & 0x7f;
