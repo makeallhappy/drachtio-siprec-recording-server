@@ -159,10 +159,15 @@ XML
 gen_scenario
 echo "=== 呼叫 sip:${CALLEE}@${HOST}:${PORT}(${CALLS} 通,每通约 ${DUR} 秒)==="
 
+# sipp 镜像:入口已是 sipp,不要再传 "sipp" 作为第一个参数(会被当成 remote_host)
+SIPP_IMG="${SIPP_IMG:-sipp:3.8.0}"
+docker image inspect "$SIPP_IMG" >/dev/null 2>&1 \
+  || { echo "❌ 缺少 sipp 镜像: $SIPP_IMG"; exit 1; }
+
 docker run --rm --network host \
   -v "$LOGDIR:/logs" \
   -v "$PWD/test/scenarios:/tmp/scen" \
-  drachtio/sipp:latest sipp "${HOST}:${PORT}" -m "$CALLS" \
+  "$SIPP_IMG" "${HOST}:${PORT}" -m "$CALLS" \
   -sf "/logs/${BASE}.xml" -s "$CALLEE" \
   -trace_msg    -message_file "/logs/${BASE}_messages.log" \
   -trace_err    -error_file   "/logs/${BASE}_errors.log" \
