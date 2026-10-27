@@ -261,7 +261,9 @@ app.get('/api/system/metrics', auth.requireAuth, async (_req, res) => {
 app.get('/api/events', auth.requireAuth, (req, res) => {
   const upstreamUrl = process.env.EVENTS_URL || 'http://127.0.0.1:22224/events';
 
-  const proxyReq = http.get(upstreamUrl, { headers: { Accept: 'text/event-stream' }, timeout: 5000 }, (up) => {
+  // SSE 长连接:上游每 15s 心跳,这里空闲超时设 45s(3 倍心跳)用于发现半开连接;
+  // 不能用 5s,否则每 5s 空闲就被销毁,前端表现为周期性重连。
+  const proxyReq = http.get(upstreamUrl, { headers: { Accept: 'text/event-stream' }, timeout: 45000 }, (up) => {
     if (up.statusCode !== 200) {
       up.resume();
       res.status(503).json({ error: `events upstream HTTP ${up.statusCode}` });
@@ -273,6 +275,7 @@ app.get('/api/events', auth.requireAuth, (req, res) => {
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
     // 客户端断开时释放上游连接,避免监听器泄漏
     req.on('close', () => up.destroy());
     up.on('error', () => res.end());

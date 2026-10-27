@@ -9,7 +9,7 @@
       <el-menu :default-active="$route.path" class="menu" background-color="#d9ecff"
                text-color="#303133" active-text-color="#0960bd" router>
         <el-menu-item index="/dashboard">
-          <el-icon><DataLine /></el-icon><span>看板</span>
+          <el-icon><DataLine /></el-icon><span>概况</span>
         </el-menu-item>
         <el-menu-item index="/recordings">
           <el-icon><Headset /></el-icon><span>录音查询</span>
