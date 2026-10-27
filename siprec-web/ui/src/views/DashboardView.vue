@@ -1,5 +1,18 @@
 <template>
   <div class="dashboard">
+    <!-- 超长通话告警 -->
+    <el-alert v-if="longCalls.length" type="warning" :closable="false" show-icon class="long-alert">
+      <template #title>
+        发现 <b>{{ longCalls.length }}</b> 通超长通话（超过 {{ fmtDuration(longCallWarnSeconds * 1000) }} 告警，到 {{ fmtDuration(maxCallSeconds * 1000) }} 自动中断）
+      </template>
+      <div class="long-list">
+        <div v-for="c in longCalls" :key="c.session_key" class="long-row">
+          <span class="long-call">{{ numOf(c.caller_number) }} → {{ numOf(c.callee_number) }}</span>
+          <span class="long-elapsed">已录 {{ fmtDuration(c.elapsed_sec * 1000) }}</span>
+          <el-button size="small" type="danger" plain @click="terminateCall(c)">中断</el-button>
+        </div>
+      </div>
+    </el-alert>
     <!-- 顶部指标卡 -->
     <div class="stat-row">
       <el-card class="stat-card active-card" shadow="hover">
@@ -124,6 +137,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { auth } from '@/auth'
 
@@ -135,6 +149,9 @@ const cpu = ref({ usagePercent: null, cores: null, load1: null })
 const memory = ref({ usedPercent: null, usedBytes: null, totalBytes: null })
 const disk = ref({ usedPercent: null, freeBytes: null, totalBytes: null })
 const rtp = ref({ ok: false, rates: {}, sessions: {}, ports: {}, quality: {} })
+const longCalls = ref([])
+const longCallWarnSeconds = ref(3600)
+const maxCallSeconds = ref(28800)
 
 const rtpSub = computed(() => {
   if (!rtp.value.ok) return 'rtpengine 未连接（9909 不可达）'
@@ -200,6 +217,27 @@ function eventMain(e) {
 function scheduleRefresh() {
   clearTimeout(refreshTimer)
   refreshTimer = setTimeout(poll, 250)
+}
+
+/** 管理员强制中断一通超长通话 */
+async function terminateCall(c) {
+  const label = `${numOf(c.caller_number)} → ${numOf(c.callee_number)}`
+  try {
+    await ElMessageBox.confirm(
+      `确定要中断 ${label}（已录 ${fmtDuration(c.elapsed_sec * 1000)}）吗？\n服务端会向 SBC 发 BYE 并结束该录音会话。`,
+      '中断录音',
+      { type: 'warning', confirmButtonText: '中断', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await api.post(`/api/calls/${encodeURIComponent(c.session_key)}/terminate`)
+    ElMessage.success(`${label} 已中断`)
+    poll()
+  } catch (e) {
+    ElMessage.error('中断失败：' + (e.response?.data?.error || e.message))
+  }
 }
 
 /** 用 fetch 读 SSE 流（EventSource 无法带 Authorization 头） */
@@ -388,6 +426,9 @@ async function poll() {
     memory.value = data.memory
     disk.value = data.disk
     rtp.value = data.rtpengine || { ok: false, rates: {}, sessions: {}, ports: {}, quality: {} }
+    longCalls.value = data.longCalls || []
+    if (data.longCallWarnSeconds) longCallWarnSeconds.value = data.longCallWarnSeconds
+    if (data.maxCallSeconds) maxCallSeconds.value = data.maxCallSeconds
     lastUpdate.value = new Date(data.ts).toLocaleTimeString()
     error.value = ''
 
@@ -468,6 +509,12 @@ onBeforeUnmount(() => {
 .err { color: #f56c6c; }
 
 .events-card { border-radius: 10px; }
+.long-alert { border-radius: 10px; }
+.long-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.long-row { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.long-call { font-weight: 600; color: #b88230; }
+.long-elapsed { color: #909399; font-variant-numeric: tabular-nums; }
+.long-row .el-button { margin-left: auto; }
 .event-list { max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .event-empty { font-size: 12px; color: #909399; padding: 6px 0; }
 .event-row { display: flex; align-items: center; gap: 10px; font-size: 12px; padding: 4px 6px; border-radius: 6px; background: #fafafa; }

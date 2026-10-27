@@ -39,6 +39,8 @@ services:
       - "30000"
       - --port-max
       - "40000"
+      - --final-timeout
+      - "30600"
       - --log-level
       - "6"
       - --recording-dir
@@ -49,7 +51,7 @@ services:
       - --log-stderr
 
   siprec-server:
-    image: siprec/siprec-server:202610-2.0.1
+    image: siprec/siprec-server:202610-2.0.3
     container_name: siprec-server
     network_mode: host
     restart: unless-stopped
@@ -60,9 +62,14 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
+      - MAX_CALL_SECONDS=${MAX_CALL_SECONDS:-28800}
+      - WATCHDOG_INTERVAL_MS=${WATCHDOG_INTERVAL_MS:-60000}
+      - GONE_GRACE_SECONDS=${GONE_GRACE_SECONDS:-120}
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN}
+      - EVENTS_PORT=${EVENTS_PORT:-22224}
 
   siprec-web:
-    image: siprec/siprec-web:202610-2.0.7
+    image: siprec/siprec-web:202610-2.0.8
     container_name: siprec-web
     network_mode: host
     restart: unless-stopped
@@ -75,6 +82,10 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
+      - LONG_CALL_WARN_SECONDS=${LONG_CALL_WARN_SECONDS:-3600}
+      - MAX_CALL_SECONDS=${MAX_CALL_SECONDS:-28800}
+      - INTERNAL_TOKEN=${INTERNAL_TOKEN}
+      - EVENTS_PORT=${EVENTS_PORT:-22224}
       - USER_DB_NAME=${USER_DB_NAME}
       - JWT_SECRET=${JWT_SECRET}
       - SSL_ENABLED=${SSL_ENABLED}

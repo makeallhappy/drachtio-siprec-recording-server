@@ -29,13 +29,30 @@ else {
 if (config.has('rtpengine')) {
   logger.info(config.get('rtpengine'), 'using rtpengine as the recorder');
   callHandler = require('./lib/rtpengine-call-handler');
+  const store = require('./lib/metadata-store');
+  const registry = require('./lib/call-registry');
   // start DTMF listener
   require('./lib/dtmf-event-handler')(logger);
-  // 通话事件 SSE 端点(只绑回环,供 siprec-web 代理给看板)
+  // 通话事件 SSE 端点 + 内部管理端点(仅回环,供 siprec-web 代理)
   const events = require('./lib/events');
-  events.start(logger, config.has('events') ? config.get('events') : {});
-  // 启动活跃会话心跳(每 10 秒刷新 last_heartbeat,供实时统计)
-  require('./lib/metadata-store').startHeartbeat();
+  events.start(logger, Object.assign({}, config.has('events') ? config.get('events') : {}, {
+    control: {
+      listCalls: () => registry.entries().map(([key, e]) => ({
+        key,
+        callId: (e.callDetails && e.callDetails['call-id']) || null,
+        caller: (e.caller && e.caller.aor) || null,
+        callee: (e.callee && e.callee.aor) || null,
+        startedAt: e.startedAt,
+        ageSec: Math.round((Date.now() - e.startedAt) / 1000),
+      })),
+      terminate: (key, reason) => registry.close(key, reason,
+        (entry, r) => callHandler.finalizeEntry(entry, r)),
+    },
+  }));
+  // 心跳只刷新真正持有 dialog 的会话(避免幽灵会话被无限续命)
+  store.setLiveKeyProvider(() => registry.liveKeys());
+  store.startHeartbeat();
+  startWatchdog(logger);
 
   // we only want to deal with siprec invites (having multipart content) in this application
   srf.use('invite', (req, res, next) => {
@@ -58,5 +75,40 @@ else {
 }
 
 srf.invite(callHandler);
+
+/**
+ * 看门狗:每 WATCHDOG_INTERVAL_MS 扫一次在录通话
+ *   A. 超长通话(如 8 小时)→ 主动 BYE + 收尾
+ *   B. 媒体侧会话已消失(rtpengine 超时删除)→ 快速收尾(默认 2 分钟宽限)
+ */
+function startWatchdog(logger) {
+  const registry = require('./lib/call-registry');
+  const MAX = Number(process.env.MAX_CALL_SECONDS || 28800);
+  const INTERVAL = Number(process.env.WATCHDOG_INTERVAL_MS || 60000);
+  const GRACE = Number(process.env.GONE_GRACE_SECONDS || 120);
+  const finalize = (entry, reason) => callHandler.finalizeEntry(entry, reason);
+
+  const timer = setInterval(async () => {
+    for (const [key, entry] of registry.entries()) {
+      if (entry.closed || entry.closing) continue;
+      const ageSec = (Date.now() - entry.startedAt) / 1000;
+
+      if (ageSec > MAX) {
+        logger.warn({ key, ageSec: Math.round(ageSec), maxCallSeconds: MAX }, 'watchdog: max duration reached');
+        registry.close(key, 'max_duration', finalize);
+        continue;
+      }
+      if (ageSec > GRACE) {
+        const alive = await registry.isSessionAlive(entry);
+        if (alive === false) {
+          logger.warn({ key, ageSec: Math.round(ageSec) }, 'watchdog: rtpengine session gone');
+          registry.close(key, 'session_gone', finalize);
+        }
+      }
+    }
+  }, INTERVAL);
+  timer.unref?.();
+  logger.info({ maxCallSeconds: MAX, intervalMs: INTERVAL, graceSeconds: GRACE }, 'call watchdog started');
+}
 
 module.exports = srf;

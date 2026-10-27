@@ -167,7 +167,7 @@ docker image inspect "$SIPP_IMG" >/dev/null 2>&1 \
 docker run --rm --network host \
   -v "$LOGDIR:/logs" \
   -v "$PWD/test/scenarios:/tmp/scen" \
-  "$SIPP_IMG" "${HOST}:${PORT}" -m "$CALLS" \
+  "$SIPP_IMG" "${HOST}:${PORT}" -m "$CALLS" -cid_type uuid \
   -sf "/logs/${BASE}.xml" -s "$CALLEE" \
   -trace_msg    -message_file "/logs/${BASE}_messages.log" \
   -trace_err    -error_file   "/logs/${BASE}_errors.log" \

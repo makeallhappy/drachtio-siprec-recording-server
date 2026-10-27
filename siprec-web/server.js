@@ -230,7 +230,40 @@ app.get('/api/recordings/:table/:id/download', auth.requireAuth, (req, res, next
   audio.audioHandler(getCallId)(req, res, next);
 });
 
-// ==================== 看板:系统实时指标(WEB 页面用,JWT 保护) ====================
+// ==================== 超长通话：告警 + 强制中断 ====================
+const LONG_CALL_WARN_SECONDS = Number(process.env.LONG_CALL_WARN_SECONDS || 3600);
+const MAX_CALL_SECONDS = Number(process.env.MAX_CALL_SECONDS || 28800);
+const INTERNAL_TOKEN = (process.env.INTERNAL_TOKEN || '').trim();
+
+/** 调用 siprec-server 的内部管理端点(仅回环 + 内部 token) */
+function internalCall(pathname, method, payload) {
+  return new Promise((resolve, reject) => {
+    const body = payload ? JSON.stringify(payload) : null;
+    const req = http.request({
+      host: '127.0.0.1',
+      port: Number(process.env.EVENTS_PORT || 22224),
+      path: pathname,
+      method,
+      timeout: 8000,
+      headers: Object.assign({ 'X-Internal-Token': INTERNAL_TOKEN },
+        body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } : {}),
+    }, (r) => {
+      let buf = '';
+      r.setEncoding('utf8');
+      r.on('data', (d) => { buf += d; });
+      r.on('end', () => {
+        try { resolve({ status: r.statusCode, body: JSON.parse(buf || '{}') }); }
+        catch { resolve({ status: r.statusCode, body: { raw: buf } }); }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('internal timeout')));
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+// 看板:系统实时指标(WEB 页面用,JWT 保护)
 app.get('/api/system/metrics', auth.requireAuth, async (_req, res) => {
   try {
     const [cpu, mem, disk, rtp] = await Promise.all([
@@ -242,6 +275,13 @@ app.get('/api/system/metrics', auth.requireAuth, async (_req, res) => {
     const [rows] = await pool.query(
       `SELECT COUNT(*) AS active FROM active_sessions
         WHERE last_heartbeat >= NOW(3) - INTERVAL 30 SECOND`);
+    const [longRows] = await pool.query(
+      `SELECT session_key, call_id, caller_number, callee_number,
+              TIMESTAMPDIFF(SECOND, start_time, NOW(3)) AS elapsed_sec
+         FROM active_sessions
+        WHERE last_heartbeat >= NOW(3) - INTERVAL 30 SECOND
+          AND TIMESTAMPDIFF(SECOND, start_time, NOW(3)) >= ?
+        ORDER BY start_time`, [LONG_CALL_WARN_SECONDS]);
     res.json({
       ts: Date.now(),
       activeRecordings: rows[0].active,
@@ -249,9 +289,26 @@ app.get('/api/system/metrics', auth.requireAuth, async (_req, res) => {
       memory: mem,
       disk,
       rtpengine: rtp,
+      longCalls: longRows,
+      longCallWarnSeconds: LONG_CALL_WARN_SECONDS,
+      maxCallSeconds: MAX_CALL_SECONDS,
     });
   } catch (err) {
     res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+// 管理员强制中断一通在录通话(SSE 事件里的 key = active_sessions.session_key)
+app.post('/api/calls/:key/terminate', auth.requireAuth, async (req, res) => {
+  const key = String(req.params.key || '');
+  if (!/^[A-Za-z0-9_]+$/.test(key)) return res.status(400).json({ error: 'invalid key' });
+  try {
+    const r = await internalCall('/terminate', 'POST', { key, reason: 'admin' });
+    if (r.status === 200 && r.body.ok) return res.json({ ok: true, key });
+    return res.status(r.status === 404 ? 404 : 502)
+      .json({ error: r.body.error || 'terminate failed' });
+  } catch (err) {
+    return res.status(502).json({ error: String(err.message || err) });
   }
 });
 
